@@ -6,11 +6,11 @@ Library for easy testing of Kubernetes deployments and operators using Fabric8 A
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=skodjob_kubetest4j&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=skodjob_kubetest4j)
 [![GitHub Release](https://img.shields.io/github/v/release/skodjob/kubetest4j)](https://github.com/skodjob/kubetest4j/releases)
-[![Maven Central Version](https://img.shields.io/maven-central/v/io.skodjob/kubetest4j)](Ihttps://central.sonatype.com/search?q=io.skodjob.kubetest4j)
+[![Maven Central Version](https://img.shields.io/maven-central/v/io.skodjob.kubetest4j/kubetest4j)](https://central.sonatype.com/search?q=io.skodjob.kubetest4j)
 
 ## Provided functionality
 ### Kubernetes resource manager
-[KubeResourceManager](kubetest4j-common/src/main/java/io/skodjob/kubetest4j/resources/KubeResourceManager.java) provides management of resources created during test phases.
+[KubeResourceManager](kubetest4j/src/main/java/io/skodjob/kubetest4j/resources/KubeResourceManager.java) provides management of resources created during test phases.
 Every Kubernetes resource created by `KubeResourceManager` is automatically deleted at the end of the test, whether the test passed or failed.
 So the Kubernetes environment is clean before and after every test run and user do not need to handle it.
 Working with Kubernetes resources using `KubeResourceManager` also provides proper wait for resource readiness.
@@ -25,23 +25,23 @@ For better clarity regarding the test logs, `TestFrame` library provides ASCII v
 ### Metrics Collector
 The `MetricsCollector` is designed to facilitate the collection of metrics from Kubernetes pods. 
 It integrates seamlessly with Kubernetes environments to gather and process metrics data efficiently. 
-For more detailed documentation, see the MetricsCollector [README](kubetest4j-metrics-collector/README.md).
+For more detailed documentation, see the MetricsCollector [README](metrics-collector/README.md).
 
 ### Log Collector
 `LogCollector` is utility for collecting logs from the Pods (and their containers), descriptions of Pods, and YAML
 descriptions of resources specified by users, collected from the desired Namespaces.
-To Log Collector's [README](kubetest4j-log-collector/README.md) contains detailed documentation about this component,
+To Log Collector's [README](log-collector/README.md) contains detailed documentation about this component,
 together with the usage and installation.
 
 ### Utils
-`TestFrame` contains also tweaks and [utils](kubetest4j-common/src/main/java/io/skodjob/kubetest4j/utils) for better working with kubernetes cluster.
+`TestFrame` contains also tweaks and [utils](kubetest4j/src/main/java/io/skodjob/kubetest4j/utils) for better working with kubernetes cluster.
 
 ## Usage
 ### Include dependency to your maven test project
 ```xml
 <dependency>
-    <groupId>io.skodjob</groupId>
-    <artifactId>kubetest4j-common</artifactId>
+    <groupId>io.skodjob.kubetest4j</groupId>
+    <artifactId>kubetest4j</artifactId>
     <version>1.0.0</version>
 </dependency>
 ```
@@ -64,8 +64,8 @@ together with the usage and installation.
 ...
 
 <dependency>
-    <groupId>io.skodjob</groupId>
-    <artifactId>kubetest4j-common</artifactId>
+    <groupId>io.skodjob.kubetest4j</groupId>
+    <artifactId>kubetest4j</artifactId>
     <version>1.1.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -130,22 +130,22 @@ class Test {
 //...
 ```
 ### Register `ResourceType` or `NamespacedResourceType` classes into `KubeResourceManager`
-Include `kubetest4j-kubernetes` or for openshift specific resources include also `kubetest4j-openshift` package.
+Include `kubernetes-resources` or for openshift specific resources include also `openshift-resources` package.
 ```xml
 ...
 <dependency>
-    <groupId>io.skodjob</groupId>
-    <artifactId>kubetest4j-common</artifactId>
+    <groupId>io.skodjob.kubetest4j</groupId>
+    <artifactId>kubetest4j</artifactId>
     <version>1.0.0</version>
 </dependency>
 <dependency>
-    <groupId>io.skodjob</groupId>
-    <artifactId>kubetest4j-kubernetes</artifactId>
+    <groupId>io.skodjob.kubetest4j</groupId>
+    <artifactId>kubernetes-resources</artifactId>
     <version>1.0.0</version>
 </dependency>
 <dependency>
-    <groupId>io.skodjob</groupId>
-    <artifactId>kubetest4j-openshift</artifactId>
+    <groupId>io.skodjob.kubetest4j</groupId>
+    <artifactId>openshift-resources</artifactId>
     <version>1.0.0</version>
 </dependency>
 ...
@@ -164,7 +164,7 @@ KubeResourceManager.get().setResourceTypes(
 ```
 
 ## Examples
-Examples are stored in [kubetest4j-test-examples](kubetest4j-test-examples/src/test/java/io/skodjob/kubetest4j/test/integration) module.
+Examples are stored in [test-examples](test-examples/src/test/java/io/skodjob/kubetest4j/test/integration) module.
 
 ## Config environment variables
 * **ENV_FILE** - path to YAML file with env variables values

@@ -42,7 +42,7 @@ Every feature enhancement should be thoroughly tested. This includes writing bot
 
 2. **Integration Tests**
 
-   Add relevant tests to the `kubetest4j-test-examples` module to verify that the new features work correctly within the overall system. Integration tests should ensure that different parts of the application work together as intended.
+   Add relevant tests to the `test-examples` module to verify that the new features work correctly within the overall system. Integration tests should ensure that different parts of the application work together as intended.
 
 ### Style Guide
 
