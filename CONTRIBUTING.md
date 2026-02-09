@@ -1,6 +1,6 @@
-# Contributing to Test Frame
+# Contributing to Kubetest4j
 
-First off, thanks for taking the time to contribute! 🎉👍 The following is a set of guidelines for contributing to the Test Frame repository.
+First off, thanks for taking the time to contribute! 🎉👍 The following is a set of guidelines for contributing to the Kubetest4j repository.
 
 ## Code of Conduct
 
@@ -42,7 +42,7 @@ Every feature enhancement should be thoroughly tested. This includes writing bot
 
 2. **Integration Tests**
 
-   Add relevant tests to the `test-frame-test-examples` module to verify that the new features work correctly within the overall system. Integration tests should ensure that different parts of the application work together as intended.
+   Add relevant tests to the `kubetest4j-test-examples` module to verify that the new features work correctly within the overall system. Integration tests should ensure that different parts of the application work together as intended.
 
 ### Style Guide
 
@@ -53,4 +53,4 @@ Please follow the existing code style and conventions used in the project. This 
 - [GitHub Help](https://help.github.com/)
 - [Understanding the GitHub Flow](https://guides.github.com/introduction/flow/)
 
-Thank you for contributing to Test Frame!
+Thank you for contributing to Kubetest4j!

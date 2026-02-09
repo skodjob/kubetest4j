@@ -6,7 +6,7 @@ labels: ['bug', 'needs-triage']
 body:
   - type: markdown
     attributes:
-      value: _Please use this only for bug reports. For questions or when you need help, you can use the [GitHub Discussions](https://github.com/skodjob/test-frame/discussions)._
+      value: _Please use this only for bug reports. For questions or when you need help, you can use the [GitHub Discussions](https://github.com/skodjob/kubetest4j/discussions)._
   - type: textarea
     attributes:
       label: Bug Description
@@ -22,10 +22,10 @@ body:
     validations:
       required: false
   - type: input
-    id: test-frame-version
+    id: kubetest4j-version
     attributes:
-      label: TEST-FRAME version
-      description: Test-Frame version where the bug occurred
+      label: KUBETEST4J version
+      description: Kubetest4j version where the bug occurred
       placeholder: e.g. main, 0.1.0
     validations:
       required: true

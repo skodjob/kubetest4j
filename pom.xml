@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.skodjob</groupId>
-    <artifactId>test-frame</artifactId>
+    <artifactId>kubetest4j</artifactId>
     <packaging>pom</packaging>
-    <version>1.4.0-SNAPSHOT</version>
+    <version>1.0.0-SNAPSHOT</version>
 
     <licenses>
         <license>
@@ -18,17 +18,17 @@
 
     <name>${project.groupId}:${project.artifactId}</name>
     <description>Kubernetes test library</description>
-    <url>https://github.com/skodjob/test-frame</url>
+    <url>https://github.com/skodjob/kubetest4j</url>
 
     <scm>
-        <connection>scm:git:git:/github.com/skodjob/test-frame.git</connection>
-        <developerConnection>scm:git:ssh://github.com/skodjob/test-frame.git</developerConnection>
-        <url>https://github.com/skodjob/test-frame</url>
+        <connection>scm:git:git:/github.com/skodjob/kubetest4j.git</connection>
+        <developerConnection>scm:git:ssh://github.com/skodjob/kubetest4j.git</developerConnection>
+        <url>https://github.com/skodjob/kubetest4j</url>
     </scm>
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/skodjob/test-frame/issues</url>
+        <url>https://github.com/skodjob/kubetest4j/issues</url>
     </issueManagement>
 
     <developers>
@@ -106,27 +106,27 @@
         <dependencies>
             <dependency>
                 <groupId>io.skodjob</groupId>
-                <artifactId>test-frame-common</artifactId>
+                <artifactId>kubetest4j-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.skodjob</groupId>
-                <artifactId>test-frame-kubernetes</artifactId>
+                <artifactId>kubetest4j-kubernetes</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.skodjob</groupId>
-                <artifactId>test-frame-openshift</artifactId>
+                <artifactId>kubetest4j-openshift</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.skodjob</groupId>
-                <artifactId>test-frame-log-collector</artifactId>
+                <artifactId>kubetest4j-log-collector</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.skodjob</groupId>
-                <artifactId>test-frame-metrics-collector</artifactId>
+                <artifactId>kubetest4j-metrics-collector</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -427,12 +427,12 @@
                 <ut.skip>true</ut.skip>
             </properties>
             <modules>
-                <module>test-frame-common</module>
-                <module>test-frame-kubernetes</module>
-                <module>test-frame-openshift</module>
-                <module>test-frame-test-examples</module>
-                <module>test-frame-metrics-collector</module>
-                <module>test-frame-log-collector</module>
+                <module>kubetest4j-common</module>
+                <module>kubetest4j-kubernetes</module>
+                <module>kubetest4j-openshift</module>
+                <module>kubetest4j-test-examples</module>
+                <module>kubetest4j-metrics-collector</module>
+                <module>kubetest4j-log-collector</module>
             </modules>
         </profile>
         <profile>
@@ -441,12 +441,12 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>test-frame-common</module>
-                <module>test-frame-kubernetes</module>
-                <module>test-frame-openshift</module>
-                <module>test-frame-test-examples</module>
-                <module>test-frame-metrics-collector</module>
-                <module>test-frame-log-collector</module>
+                <module>kubetest4j-common</module>
+                <module>kubetest4j-kubernetes</module>
+                <module>kubetest4j-openshift</module>
+                <module>kubetest4j-test-examples</module>
+                <module>kubetest4j-metrics-collector</module>
+                <module>kubetest4j-log-collector</module>
             </modules>
         </profile>
         <profile>
@@ -455,11 +455,11 @@
                 <activeByDefault>false</activeByDefault>
             </activation>
             <modules>
-                <module>test-frame-common</module>
-                <module>test-frame-kubernetes</module>
-                <module>test-frame-openshift</module>
-                <module>test-frame-metrics-collector</module>
-                <module>test-frame-log-collector</module>
+                <module>kubetest4j-common</module>
+                <module>kubetest4j-kubernetes</module>
+                <module>kubetest4j-openshift</module>
+                <module>kubetest4j-metrics-collector</module>
+                <module>kubetest4j-log-collector</module>
             </modules>
             <properties>
                 <!--suppress UnresolvedMavenProperty -->
@@ -518,11 +518,11 @@
                                     <appendAssemblyId>false</appendAssemblyId>
                                     <tarLongFileMode>posix</tarLongFileMode>
                                     <descriptors>
-                                        <descriptor>test-frame-common/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>test-frame-kubernetes/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>test-frame-openshift/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>test-frame-metrics-collector/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>test-frame-log-collector/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubetest4j-common/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubetest4j-kubernetes/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubetest4j-openshift/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubetest4j-metrics-collector/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubetest4j-log-collector/src/main/assembly/dist.xml</descriptor>
                                     </descriptors>
                                 </configuration>
                             </execution>

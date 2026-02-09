@@ -13,7 +13,7 @@ permissions:
   pull-requests: write
 
 env:
-  SONAR_PROJECT_KEY: skodjob_test-frame
+  SONAR_PROJECT_KEY: skodjob_kubetest4j
 
 jobs:
   analyze:
