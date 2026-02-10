@@ -130,6 +130,11 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>junit-extension</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>io.fabric8</groupId>
                 <artifactId>kubernetes-client-bom-with-deps</artifactId>
                 <version>${fabric8.version}</version>
@@ -389,6 +394,7 @@
                 <inherited>true</inherited>
                 <configuration>
                     <properties>
+                        <argLine>@{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
                         <configurationParameters>
                             junit.jupiter.extensions.autodetection.enabled = true
                         </configurationParameters>
@@ -433,6 +439,7 @@
                 <module>test-examples</module>
                 <module>metrics-collector</module>
                 <module>log-collector</module>
+                <module>junit-extension</module>
             </modules>
         </profile>
         <profile>
@@ -447,6 +454,7 @@
                 <module>test-examples</module>
                 <module>metrics-collector</module>
                 <module>log-collector</module>
+                <module>junit-extension</module>
             </modules>
         </profile>
         <profile>
@@ -460,6 +468,7 @@
                 <module>openshift-resources</module>
                 <module>metrics-collector</module>
                 <module>log-collector</module>
+                <module>junit-extension</module>
             </modules>
             <properties>
                 <!--suppress UnresolvedMavenProperty -->
@@ -523,6 +532,7 @@
                                         <descriptor>openshift-resources/src/main/assembly/dist.xml</descriptor>
                                         <descriptor>metrics-collector/src/main/assembly/dist.xml</descriptor>
                                         <descriptor>log-collector/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>junit-extension/src/main/assembly/dist.xml</descriptor>
                                     </descriptors>
                                 </configuration>
                             </execution>

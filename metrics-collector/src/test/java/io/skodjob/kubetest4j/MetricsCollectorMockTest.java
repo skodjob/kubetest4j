@@ -320,7 +320,7 @@ final class MetricsCollectorMockTest {
 
     @Test
     void testCollectMetricsIPv6Wrapping() throws Exception {
-        System.setProperty("io.skodjob.testframe.env.IP_FAMILY", "IPv6");
+        System.setProperty("io.skodjob.kubetest4j.env.IP_FAMILY", "IPv6");
 
         var kubeClient = mock(io.fabric8.kubernetes.client.KubernetesClient.class);
         var podsOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);

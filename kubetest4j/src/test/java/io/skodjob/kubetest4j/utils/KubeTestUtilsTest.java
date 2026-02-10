@@ -20,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @TestVisualSeparator
-class TestFrameUtilsTest {
+class KubeTestUtilsTest {
 
     @Test
     void testGetFileFromResourceAsStreamSuccess() {
         // Test with a file that should exist in the test resources
-        InputStream inputStream = TestFrameUtils.getFileFromResourceAsStream("resources.yaml");
+        InputStream inputStream = KubeTestUtils.getFileFromResourceAsStream("resources.yaml");
         assertNotNull(inputStream);
     }
 
@@ -33,7 +33,7 @@ class TestFrameUtilsTest {
     void testGetFileFromResourceAsStreamNotFound() {
         // Test with a file that doesn't exist
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
-            TestFrameUtils.getFileFromResourceAsStream("non-existent-file.yaml"));
+            KubeTestUtils.getFileFromResourceAsStream("non-existent-file.yaml"));
         assertTrue(exception.getMessage().contains("file not found! non-existent-file.yaml"));
     }
 
@@ -44,7 +44,7 @@ class TestFrameUtilsTest {
             value: 123
             """;
 
-        TestConfig config = TestFrameUtils.configFromYaml(yamlContent, TestConfig.class);
+        TestConfig config = KubeTestUtils.configFromYaml(yamlContent, TestConfig.class);
         assertNotNull(config);
         assertEquals("test", config.getName());
         assertEquals(123, config.getValue());
@@ -55,7 +55,7 @@ class TestFrameUtilsTest {
         String invalidYaml = "invalid: yaml: content: [";
 
         assertThrows(RuntimeException.class, () ->
-            TestFrameUtils.configFromYaml(invalidYaml, TestConfig.class));
+            KubeTestUtils.configFromYaml(invalidYaml, TestConfig.class));
     }
 
     @Test
@@ -66,7 +66,7 @@ class TestFrameUtilsTest {
             writer.write("name: fileTest\nvalue: 456");
         }
 
-        TestConfig config = TestFrameUtils.configFromYaml(yamlFile, TestConfig.class);
+        TestConfig config = KubeTestUtils.configFromYaml(yamlFile, TestConfig.class);
         assertNotNull(config);
         assertEquals("fileTest", config.getName());
         assertEquals(456, config.getValue());
@@ -77,14 +77,14 @@ class TestFrameUtilsTest {
         File nonExistentFile = new File("non-existent.yaml");
 
         assertThrows(RuntimeException.class, () ->
-            TestFrameUtils.configFromYaml(nonExistentFile, TestConfig.class));
+            KubeTestUtils.configFromYaml(nonExistentFile, TestConfig.class));
     }
 
     @Test
     void testRunUntilPassSuccess() {
         Callable<String> successfulCallable = () -> "success";
 
-        String result = TestFrameUtils.runUntilPass(3, successfulCallable);
+        String result = KubeTestUtils.runUntilPass(3, successfulCallable);
         assertEquals("success", result);
     }
 
@@ -104,7 +104,7 @@ class TestFrameUtilsTest {
             }
         };
 
-        String result = TestFrameUtils.runUntilPass(5, eventuallySuccessfulCallable);
+        String result = KubeTestUtils.runUntilPass(5, eventuallySuccessfulCallable);
         assertEquals("finally success", result);
     }
 
@@ -115,7 +115,7 @@ class TestFrameUtilsTest {
         };
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
-            TestFrameUtils.runUntilPass(2, alwaysFailsCallable));
+            KubeTestUtils.runUntilPass(2, alwaysFailsCallable));
         assertTrue(exception.getMessage().contains("Callable did not pass in 2 attempts"));
     }
 
@@ -126,7 +126,7 @@ class TestFrameUtilsTest {
         };
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
-            TestFrameUtils.runUntilPass(1, errorCallable));
+            KubeTestUtils.runUntilPass(1, errorCallable));
         assertTrue(exception.getMessage().contains("Callable did not pass in 1 attempts"));
     }
 
@@ -139,7 +139,7 @@ class TestFrameUtilsTest {
         };
 
         assertThrows(RuntimeException.class, () ->
-            TestFrameUtils.runUntilPass(1, interruptedCallable));
+            KubeTestUtils.runUntilPass(1, interruptedCallable));
     }
 
     // Test class for YAML parsing

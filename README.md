@@ -20,7 +20,7 @@ Instance of `KubeResourceManager` contains accessible fabric8 kubernetes client 
 These clients are initialized and connected to the test cluster based on the configuration provided by the env file, env variables, or kubeconfig.
 
 ### Test visual separation
-For better clarity regarding the test logs, `TestFrame` library provides ASCII vial separation of tests and test classes.
+For better clarity regarding the test logs, `kubetest4j` library provides ASCII visual separation of tests and test classes.
 
 ### Metrics Collector
 The `MetricsCollector` is designed to facilitate the collection of metrics from Kubernetes pods. 
@@ -34,7 +34,7 @@ To Log Collector's [README](log-collector/README.md) contains detailed documenta
 together with the usage and installation.
 
 ### Utils
-`TestFrame` contains also tweaks and [utils](kubetest4j/src/main/java/io/skodjob/kubetest4j/utils) for better working with kubernetes cluster.
+`kubetest4j` contains also tweaks and [utils](kubetest4j/src/main/java/io/skodjob/kubetest4j/utils) for better working with kubernetes cluster.
 
 ## Usage
 ### Include dependency to your maven test project
@@ -42,7 +42,7 @@ together with the usage and installation.
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubetest4j</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
 </dependency>
 ```
 ### Or use snapshot releases
@@ -66,7 +66,7 @@ together with the usage and installation.
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubetest4j</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>{version-snapshot}</version>
 </dependency>
 ```
 
@@ -108,26 +108,48 @@ class Test {
 }
 //...
 ```
-### Switch between cluster contexts
-KubeResourceManager always uses context `default`, if you want to use different configured kube cluster context use followed syntax.
+### Work with multiple cluster contexts
+KubeResourceManager supports both temporary context switching and persistent multi-context usage:
+
+#### Option 1: Temporary Context Switching (Legacy)
+Use `useContext()` for temporary operations in a different context:
 ```java
-//...
 @ResourceManager
 class Test {
     @Test
     void testMethod() {
+        // Default context
         Namespace ns = new NamespaceBuilder().withNewMetadata().withName("test").endMetadata().build();
         KubeResourceManager.get().createResourceWithWait(ns);
-        assertNotNull(KubeResourceManager.get().kubeCmdClient().withTimeout(2000).get("namespace", "test"));
 
+        // Temporarily switch to prod context
         try (var ctx = KubeResourceManager.get().useContext("prod")) {
-            Namespace ns = new NamespaceBuilder().withNewMetadata().withName("test-prod").endMetadata().build();
-            KubeResourceManager.get().createResourceWithWait(ns);
-            assertNotNull(KubeResourceManager.get().kubeCmdClient().get("namespace", "test-prod"));
+            Namespace prodNs = new NamespaceBuilder().withNewMetadata().withName("test-prod").endMetadata().build();
+            KubeResourceManager.get().createResourceWithWait(prodNs);
         }
+        // Automatically returns to previous context
     }
 }
-//...
+```
+
+#### Option 2: Per-Context Singletons (Recommended for Multi-Context)
+Get dedicated instances for each context that can be used simultaneously:
+```java
+@ResourceManager
+class Test {
+    @Test
+    void testMultiContext() {
+        // Get separate instances for each context
+        KubeResourceManager defaultMgr = KubeResourceManager.get();
+        KubeResourceManager prodMgr = KubeResourceManager.getForContext("prod");
+        KubeResourceManager stageMgr = KubeResourceManager.getForContext("stage");
+
+        // All can be used simultaneously without conflicts
+        defaultMgr.createResourceWithWait(defaultDeployment);
+        prodMgr.createResourceWithWait(prodDeployment);
+        stageMgr.createResourceWithWait(stageDeployment);
+    }
+}
 ```
 ### Register `ResourceType` or `NamespacedResourceType` classes into `KubeResourceManager`
 Include `kubernetes-resources` or for openshift specific resources include also `openshift-resources` package.
@@ -136,17 +158,17 @@ Include `kubernetes-resources` or for openshift specific resources include also 
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubetest4j</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
 </dependency>
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubernetes-resources</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
 </dependency>
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>openshift-resources</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
 </dependency>
 ...
 ```
