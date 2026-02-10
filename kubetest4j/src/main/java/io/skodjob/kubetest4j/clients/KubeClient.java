@@ -23,7 +23,7 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.openshift.client.OpenShiftClient;
-import io.skodjob.kubetest4j.KubetestEnv;
+import io.skodjob.kubetest4j.KubeTestEnv;
 import io.skodjob.kubetest4j.executor.Exec;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
 import org.slf4j.Logger;
@@ -395,7 +395,7 @@ public class KubeClient {
         try {
             String host = java.net.URI.create(url).getHost().replaceAll("[^\\w]", "-");
             String suffix = Integer.toHexString((host + token).hashCode()).substring(0, 6);
-            String path = Path.of(KubetestEnv.USER_PATH,
+            String path = Path.of(KubeTestEnv.USER_PATH,
                 "test-" + host + "-" + suffix + ".kubeconfig").toString();
 
             Exec.exec(null, Arrays.asList("kubectl", "config", "set-credentials",

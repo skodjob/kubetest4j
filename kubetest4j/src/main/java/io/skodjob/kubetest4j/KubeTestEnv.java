@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * Class which holds environment variables for system tests.
  */
-public final class KubetestEnv {
+public final class KubeTestEnv {
 
     private static final TestEnvironmentVariables ENV_VARIABLES = new TestEnvironmentVariables();
 
@@ -42,7 +42,7 @@ public final class KubetestEnv {
      * The type of client.
      */
     public static final String CLIENT_TYPE =
-        ENV_VARIABLES.getOrDefault(CLIENT_TYPE_ENV, KubetestConstants.KUBERNETES_CLIENT);
+        ENV_VARIABLES.getOrDefault(CLIENT_TYPE_ENV, KubeTestConstants.KUBERNETES_CLIENT);
 
     /**
      * List of kubeconfigs
@@ -61,7 +61,7 @@ public final class KubetestEnv {
      */
     public static final String IP_FAMILY = ENV_VARIABLES.getOrDefault(IP_FAMILY_ENV, IP_FAMILY_DEFAULT);
 
-    private KubetestEnv() {
+    private KubeTestEnv() {
         // Private constructor to prevent instantiation
     }
 

@@ -7,7 +7,7 @@ package io.skodjob.kubetest4j.environment;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -180,13 +180,13 @@ public class TestEnvironmentVariables {
         String defTok = getOrDefault("KUBE_TOKEN", null);
 
         if (defKC != null) {
-            out.put(KubetestConstants.DEFAULT_CONTEXT_NAME,
+            out.put(KubeTestConstants.DEFAULT_CONTEXT_NAME,
                 new ClusterConfig(null, null, defKC));
         } else if (defURL != null && defTok != null) {
-            out.put(KubetestConstants.DEFAULT_CONTEXT_NAME,
+            out.put(KubeTestConstants.DEFAULT_CONTEXT_NAME,
                 new ClusterConfig(defURL, defTok, null));
         } else {
-            out.put(KubetestConstants.DEFAULT_CONTEXT_NAME,
+            out.put(KubeTestConstants.DEFAULT_CONTEXT_NAME,
                 new ClusterConfig(null, null, null));
         }
 

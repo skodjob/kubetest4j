@@ -9,9 +9,9 @@ import java.time.Duration;
 /**
  * Constants used in the test framework.
  */
-public final class KubetestConstants {
+public final class KubeTestConstants {
 
-    private KubetestConstants() {
+    private KubeTestConstants() {
         // Private constructor to prevent instantiation
     }
 

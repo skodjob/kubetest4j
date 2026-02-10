@@ -8,7 +8,7 @@ import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.openshift.api.model.operatorhub.v1alpha1.InstallPlan;
 import io.fabric8.openshift.api.model.operatorhub.v1alpha1.InstallPlanBuilder;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import io.skodjob.kubetest4j.wait.Wait;
 import org.slf4j.Logger;
@@ -33,7 +33,7 @@ public final class KubeUtils {
      */
     public static void approveInstallPlan(String namespaceName, String installPlanName) {
         LOGGER.debug("Approving InstallPlan {}", installPlanName);
-        Wait.until("InstallPlan approval", KubetestConstants.GLOBAL_POLL_INTERVAL_SHORT, 15_000, () -> {
+        Wait.until("InstallPlan approval", KubeTestConstants.GLOBAL_POLL_INTERVAL_SHORT, 15_000, () -> {
             try {
                 InstallPlan installPlan =
                     new InstallPlanBuilder(KubeResourceManager.get().kubeClient()
@@ -79,7 +79,7 @@ public final class KubeUtils {
     public static void labelNamespace(String namespace, String key, String value) {
         if (KubeResourceManager.get().kubeClient().namespaceExists(namespace)) {
             Wait.until(String.format("Namespace %s has label: %s", namespace, key),
-                KubetestConstants.GLOBAL_POLL_INTERVAL_1_SEC, KubetestConstants.GLOBAL_STABILITY_TIME, () -> {
+                KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC, KubeTestConstants.GLOBAL_STABILITY_TIME, () -> {
                     try {
                         KubeResourceManager.get().kubeClient().getClient().namespaces().withName(namespace).edit(n ->
                             new NamespaceBuilder(n)

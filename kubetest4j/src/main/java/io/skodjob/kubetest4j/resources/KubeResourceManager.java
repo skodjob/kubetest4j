@@ -40,8 +40,8 @@ import io.fabric8.kubernetes.api.model.apps.ReplicaSet;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.utils.Serialization;
-import io.skodjob.kubetest4j.KubetestConstants;
-import io.skodjob.kubetest4j.KubetestEnv;
+import io.skodjob.kubetest4j.KubeTestConstants;
+import io.skodjob.kubetest4j.KubeTestEnv;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.clients.cmdClient.KubeCmdClient;
 import io.skodjob.kubetest4j.clients.cmdClient.Kubectl;
@@ -95,12 +95,12 @@ public final class KubeResourceManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(KubeResourceManager.class);
 
     private static final Map<String, TestEnvironmentVariables.ClusterConfig> CLUSTER_CONFIGS =
-        KubetestEnv.CLUSTER_CONFIGS;
+        KubeTestEnv.CLUSTER_CONFIGS;
     private String storeYamlPath;
 
     private final Map<String, ClusterContext<? extends KubeCmdClient<?>>> clientCache = new ConcurrentHashMap<>();
     private static final ThreadLocal<String> CURRENT_CLUSTER_CONTEXT = ThreadLocal.withInitial(() ->
-        KubetestConstants.DEFAULT_CONTEXT_NAME);
+        KubeTestConstants.DEFAULT_CONTEXT_NAME);
     private static final ThreadLocal<ExtensionContext> TEST_CONTEXT = new ThreadLocal<>();
 
     private static final KubeResourceManager INSTANCE = new KubeResourceManager();
@@ -147,7 +147,7 @@ public final class KubeResourceManager {
      * @return context
      */
     public AutoCloseable useContext(String id) {
-        String ctxId = Optional.ofNullable(id).orElse(KubetestConstants.DEFAULT_CONTEXT_NAME).toLowerCase();
+        String ctxId = Optional.ofNullable(id).orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME).toLowerCase();
         if (!CLUSTER_CONFIGS.containsKey(ctxId)) {
             throw new IllegalArgumentException("Unknown context '" + ctxId +
                 "'. Define env vars [KUBE_URL|KUBE_TOKEN|KUBECONFIG]_" + ctxId.toUpperCase());
@@ -183,7 +183,7 @@ public final class KubeResourceManager {
                 kube = new KubeClient();
             }
 
-            if (KubetestEnv.CLIENT_TYPE.equals(KubetestConstants.KUBERNETES_CLIENT)) {
+            if (KubeTestEnv.CLIENT_TYPE.equals(KubeTestConstants.KUBERNETES_CLIENT)) {
                 Kubectl kubectl = new Kubectl(kube.getKubeconfigPath());
                 return new ClusterContext<>(kube, kubectl);
             } else {
@@ -499,7 +499,7 @@ public final class KubeResourceManager {
                         waiters.add(cf);
                     } else {
                         try {
-                            cf.get(KubetestConstants.GLOBAL_TIMEOUT_MEDIUM, TimeUnit.MILLISECONDS);
+                            cf.get(KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM, TimeUnit.MILLISECONDS);
                         } catch (TimeoutException e) {
                             LOGGER.error("Timeout waiting for resource {}/{} to be ready",
                                 resource.getMetadata().getNamespace(),
@@ -527,7 +527,7 @@ public final class KubeResourceManager {
                 }
                 if (waitReady) {
                     long timeout = Objects.requireNonNullElse(type.getTimeoutForResourceReadiness(),
-                        KubetestConstants.GLOBAL_TIMEOUT_MEDIUM);
+                        KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
                     CompletableFuture<Void> cf = CompletableFuture.runAsync(() ->
                         assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
                             "Timed out waiting for " + resource.getKind() + "/" +
@@ -745,7 +745,7 @@ public final class KubeResourceManager {
      * @return True if the condition is fulfilled, false otherwise.
      */
     public <T extends HasMetadata> boolean waitResourceCondition(T resource, ResourceCondition<T> condition) {
-        return waitResourceCondition(resource, condition, KubetestConstants.GLOBAL_TIMEOUT);
+        return waitResourceCondition(resource, condition, KubeTestConstants.GLOBAL_TIMEOUT);
     }
 
     /**
@@ -781,7 +781,7 @@ public final class KubeResourceManager {
         boolean[] ready = new boolean[1];
         Wait.until(String.format("Resource condition: %s to be fulfilled for resource %s/%s",
                 condition.conditionName(), resource.getKind(), resource.getMetadata().getName()),
-            KubetestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, resourceTimeout, () -> {
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, resourceTimeout, () -> {
                 LOGGER.trace("Obtaining current state of resource: {}/{}",
                     resource.getKind(), resource.getMetadata().getName());
                 T r = resourceSupplier.get();
@@ -833,7 +833,7 @@ public final class KubeResourceManager {
                 waiters.add(cf);
             } else {
                 try {
-                    cf.get(KubetestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
+                    cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
                     LOGGER.error("Timeout waiting for deletion of resource {}/{}",
                         item.resource().getMetadata().getNamespace(),
@@ -871,7 +871,7 @@ public final class KubeResourceManager {
         if (!waiters.isEmpty()) {
             try {
                 CompletableFuture.allOf(waiters.toArray(new CompletableFuture[0]))
-                    .get(KubetestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
+                    .get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
                 LOGGER.error("Timeout exception during wait for resources to be deleted");
                 throw new RuntimeException(e.getMessage(), e);
@@ -943,7 +943,7 @@ public final class KubeResourceManager {
             waiters.add(cf);
         } else {
             try {
-                cf.get(KubetestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
+                cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
                 LOGGER.error("Timeout waiting for deletion of resource {}/{}",
                     res.getMetadata().getNamespace(),

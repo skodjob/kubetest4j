@@ -8,7 +8,7 @@ import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.LabelSelector;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.readiness.Readiness;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import io.skodjob.kubetest4j.wait.Wait;
 import org.slf4j.Logger;
@@ -40,7 +40,7 @@ public final class PodUtils {
      */
     public static void waitForPodsReady(String namespaceName, boolean containersReady, Runnable onTimeout) {
         Wait.until("readiness of all Pods in namespace " + namespaceName,
-            KubetestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, READINESS_TIMEOUT,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, READINESS_TIMEOUT,
             () -> {
                 List<Pod> pods = KubeResourceManager.get().kubeClient().getClient()
                     .pods().inNamespace(namespaceName).list().getItems();
@@ -82,7 +82,7 @@ public final class PodUtils {
     public static void waitForPodsReady(String namespaceName, LabelSelector selector, int expectPodsCount,
                                         boolean containers, Runnable onTimeout) {
         Wait.until("readiness of all Pods matching " + selector + " in Namespace " + namespaceName,
-            KubetestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, READINESS_TIMEOUT,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, READINESS_TIMEOUT,
             () -> {
                 List<Pod> pods = KubeResourceManager.get().kubeClient().getClient().pods()
                     .inNamespace(namespaceName).withLabelSelector(selector).list().getItems();
@@ -172,7 +172,7 @@ public final class PodUtils {
 
         Wait.until(String.format("Pods in Namespace '%s' with LabelSelector %s stability in phase %s",
                 namespaceName, selector, phase),
-            KubetestConstants.GLOBAL_POLL_INTERVAL_SHORT, KubetestConstants.GLOBAL_TIMEOUT,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_SHORT, KubeTestConstants.GLOBAL_TIMEOUT,
             () -> {
                 List<Pod> existingPod = KubeResourceManager.get().kubeClient().getClient().pods()
                     .inNamespace(namespaceName).withLabelSelector(selector).list().getItems();
@@ -189,8 +189,8 @@ public final class PodUtils {
                             namespaceName,
                             pod.getMetadata().getName(),
                             pod.getStatus().getPhase(),
-                            KubetestConstants.GLOBAL_STABILITY_TIME -
-                                (KubetestConstants.GLOBAL_POLL_INTERVAL_SHORT * stabilityCounter[0])
+                            KubeTestConstants.GLOBAL_STABILITY_TIME -
+                                (KubeTestConstants.GLOBAL_POLL_INTERVAL_SHORT * stabilityCounter[0])
                         );
                     } else {
                         LOGGER.warn("Pod {}/{} is not stable in phase following phase {} ({})" +
@@ -203,8 +203,8 @@ public final class PodUtils {
                 }
                 stabilityCounter[0]++;
 
-                if (stabilityCounter[0] == KubetestConstants.GLOBAL_STABILITY_TIME /
-                    (KubetestConstants.GLOBAL_POLL_INTERVAL_SHORT)) {
+                if (stabilityCounter[0] == KubeTestConstants.GLOBAL_STABILITY_TIME /
+                    (KubeTestConstants.GLOBAL_POLL_INTERVAL_SHORT)) {
                     LOGGER.info("All Pods {}/{} are stable", namespaceName, existingPod.stream()
                         .map(p -> p.getMetadata().getName()).collect(Collectors.joining(" ,")));
                     return true;

@@ -4,7 +4,7 @@
  */
 package io.skodjob.kubetest4j.security;
 
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.wait.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -225,11 +225,11 @@ public class OpenSsl {
         ZonedDateTime notAfter = ZonedDateTime.of(LocalDateTime.parse(endDate, formatter), gmtZone);
 
         Wait.until("certificate to be in valid date range",
-            KubetestConstants.POLL_INTERVAL_FOR_RESOURCE_READINESS, KubetestConstants.GLOBAL_POLL_INTERVAL_LONG,
+            KubeTestConstants.POLL_INTERVAL_FOR_RESOURCE_READINESS, KubeTestConstants.GLOBAL_POLL_INTERVAL_LONG,
             () -> {
                 ZonedDateTime now = ZonedDateTime.now(gmtZone);
-                return (now.isAfter(notBefore.plusSeconds(KubetestConstants.CA_CERT_VALIDITY_DELAY))
-                    && now.isBefore(notAfter.minusSeconds(KubetestConstants.CA_CERT_VALIDITY_DELAY)));
+                return (now.isAfter(notBefore.plusSeconds(KubeTestConstants.CA_CERT_VALIDITY_DELAY))
+                    && now.isBefore(notAfter.minusSeconds(KubeTestConstants.CA_CERT_VALIDITY_DELAY)));
             });
     }
 }

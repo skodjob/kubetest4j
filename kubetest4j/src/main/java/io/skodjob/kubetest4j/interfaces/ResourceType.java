@@ -8,7 +8,7 @@ import java.util.function.Consumer;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 
 /**
  * Class for encapsulating methods related to {@link T} resource.
@@ -33,12 +33,12 @@ public interface ResourceType<T extends HasMetadata> {
 
     /**
      * Timeout for resource readiness.
-     * Defaults to {@link KubetestConstants#GLOBAL_TIMEOUT_MEDIUM}.
+     * Defaults to {@link KubeTestConstants#GLOBAL_TIMEOUT_MEDIUM}.
      *
      * @return  timeout for resource readiness
      */
     default Long getTimeoutForResourceReadiness() {
-        return KubetestConstants.GLOBAL_TIMEOUT_MEDIUM;
+        return KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM;
     }
 
     /**

@@ -8,7 +8,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobCondition;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import io.skodjob.kubetest4j.wait.Wait;
 import org.slf4j.Logger;
@@ -42,7 +42,7 @@ public final class JobUtils {
             .listPodsByPrefixInName(namespace, jobName).get(0).getMetadata().getName();
 
         Wait.until("Job contains log message: " + logMessage,
-            KubetestConstants.GLOBAL_POLL_INTERVAL_LONG, KubetestConstants.GLOBAL_TIMEOUT,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_LONG, KubeTestConstants.GLOBAL_TIMEOUT,
             () -> KubeResourceManager.get().kubeClient().getLogsFromPod(namespace, jobPodName).contains(logMessage));
     }
 
@@ -66,7 +66,7 @@ public final class JobUtils {
     public static void waitForJobDeletion(final String namespace, String jobName) {
         LOGGER.debug("Waiting for Job: {}/{} deletion", namespace, jobName);
         Wait.until("deletion of Job: " + namespace + "/" + jobName,
-            KubetestConstants.GLOBAL_POLL_INTERVAL_1_SEC, KubetestConstants.GLOBAL_TIMEOUT_MEDIUM,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC, KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM,
             () -> KubeResourceManager.get().kubeClient().listPodsByPrefixInName(namespace, jobName).isEmpty());
         LOGGER.debug("Job: {}/{} was deleted", namespace, jobName);
     }
@@ -93,7 +93,7 @@ public final class JobUtils {
     public static void waitForJobSuccess(String namespace, String jobName, long timeout) {
         LOGGER.info("Waiting for Job: {}/{} to success", namespace, jobName);
         Wait.until("success of Job: " + namespace + "/" + jobName,
-            KubetestConstants.GLOBAL_POLL_INTERVAL_1_SEC, timeout,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC, timeout,
             () -> KubeResourceManager.get().kubeClient().getClient().batch().v1().jobs()
                 .inNamespace(namespace).withName(jobName).get().getStatus().getSucceeded() != null);
     }
@@ -108,7 +108,7 @@ public final class JobUtils {
     public static void waitForJobFailure(String namespace, String jobName, long timeout) {
         LOGGER.info("Waiting for Job: {}/{} to fail", namespace, jobName);
         Wait.until("failure of Job: " + namespace + "/" + jobName,
-            KubetestConstants.GLOBAL_POLL_INTERVAL_1_SEC, timeout,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC, timeout,
             () -> KubeResourceManager.get().kubeClient().getClient().batch().v1().jobs()
                 .inNamespace(namespace).withName(jobName).get().getStatus().getFailed() != null);
     }

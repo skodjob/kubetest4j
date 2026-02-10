@@ -10,7 +10,7 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 
 /**
@@ -44,7 +44,7 @@ public class DeploymentType implements ResourceType<Deployment> {
      */
     @Override
     public Long getTimeoutForResourceReadiness() {
-        return KubetestConstants.GLOBAL_TIMEOUT;
+        return KubeTestConstants.GLOBAL_TIMEOUT;
     }
 
     /**

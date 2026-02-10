@@ -463,7 +463,7 @@ public class MetricsCollector {
         final MetricsCollectionStatus status = new MetricsCollectionStatus();
 
         try {
-            Wait.until("metrics won't be empty", KubetestConstants.GLOBAL_POLL_INTERVAL_1_SEC, timeoutDuration,
+            Wait.until("metrics won't be empty", KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC, timeoutDuration,
                 () -> {
                     try {
                         Map<String, List<Metric>> metricsData = collectMetricsFromPodsWithoutWait();
@@ -543,7 +543,7 @@ public class MetricsCollector {
     /**
      * Collects metrics from all relevant pods within the configured namespace using the default timeout.
      * This method is a convenience wrapper around {@link #collectMetricsFromPods(long)} with the timeout
-     * set to {@link KubetestConstants#GLOBAL_TIMEOUT_MEDIUM}.
+     * set to {@link KubeTestConstants#GLOBAL_TIMEOUT_MEDIUM}.
      *
      * <p>This simplifies calls to the metrics collection process when the default timeout is appropriate.
      * The method orchestrates the metric collection process, handling retries, exceptions, and aggregates
@@ -555,7 +555,7 @@ public class MetricsCollector {
      *                                    collection logic.
      */
     public final void collectMetricsFromPods() throws MetricsCollectionException {
-        collectMetricsFromPods(KubetestConstants.GLOBAL_TIMEOUT_MEDIUM);
+        collectMetricsFromPods(KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
     }
 
     /**
@@ -584,7 +584,7 @@ public class MetricsCollector {
         for (final Pod p : pods) {
             final String podName = p.getMetadata().getName();
             String podIP = p.getStatus().getPodIP();
-            if (KubetestEnv.IP_FAMILY.equals(KubetestEnv.IP_FAMILY_VERSION_6)) {
+            if (KubeTestEnv.IP_FAMILY.equals(KubeTestEnv.IP_FAMILY_VERSION_6)) {
                 podIP = "[" + podIP + "]";
             }
 

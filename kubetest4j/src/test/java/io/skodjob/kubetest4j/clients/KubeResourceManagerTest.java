@@ -15,7 +15,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.annotations.ResourceManager;
 import io.skodjob.kubetest4j.annotations.TestVisualSeparator;
 import io.skodjob.kubetest4j.helper.NamespaceType;
@@ -263,7 +263,7 @@ class KubeResourceManagerTest {
         KubeResourceManager.get().createResourceWithWait(ns);
         KubeResourceManager.get().createResourceWithWait(sa);
 
-        try (var ignored = KubeResourceManager.get().useContext(KubetestConstants.DEFAULT_CONTEXT_NAME)) {
+        try (var ignored = KubeResourceManager.get().useContext(KubeTestConstants.DEFAULT_CONTEXT_NAME)) {
             assertTrue(KubeResourceManager.get().kubeClient().namespaceExists("test-ns-2"));
             KubeResourceManager.get().deleteResourceWithWait(sa);
         }

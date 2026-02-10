@@ -7,7 +7,7 @@ package io.skodjob.kubetest4j.test.integration;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
-import io.skodjob.kubetest4j.KubetestConstants;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.annotations.ResourceManager;
 import io.skodjob.kubetest4j.clients.KubeClusterException;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
@@ -85,7 +85,7 @@ final class KubeResourceManagerCleanerIT extends AbstractIT {
 
     @Test
     void testMultiClusterAccess() throws Exception {
-        try (var ctx = KubeResourceManager.get().useContext(KubetestConstants.DEFAULT_CONTEXT_NAME)) {
+        try (var ctx = KubeResourceManager.get().useContext(KubeTestConstants.DEFAULT_CONTEXT_NAME)) {
             KubeResourceManager.get().createResourceWithWait(
                 new NamespaceBuilder().withNewMetadata().withName("kornys").endMetadata().build());
         }
