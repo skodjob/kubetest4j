@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.skodjob</groupId>
-    <artifactId>kubetest4j</artifactId>
+    <groupId>io.skodjob.kubetest4j</groupId>
+    <artifactId>kubetest4j-parent</artifactId>
     <packaging>pom</packaging>
     <version>1.0.0-SNAPSHOT</version>
 
@@ -105,28 +105,28 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>io.skodjob</groupId>
-                <artifactId>kubetest4j-common</artifactId>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>kubetest4j</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.skodjob</groupId>
-                <artifactId>kubetest4j-kubernetes</artifactId>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>kubernetes-resources</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.skodjob</groupId>
-                <artifactId>kubetest4j-openshift</artifactId>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>openshift-resources</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.skodjob</groupId>
-                <artifactId>kubetest4j-log-collector</artifactId>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>log-collector</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.skodjob</groupId>
-                <artifactId>kubetest4j-metrics-collector</artifactId>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>metrics-collector</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -427,12 +427,12 @@
                 <ut.skip>true</ut.skip>
             </properties>
             <modules>
-                <module>kubetest4j-common</module>
-                <module>kubetest4j-kubernetes</module>
-                <module>kubetest4j-openshift</module>
-                <module>kubetest4j-test-examples</module>
-                <module>kubetest4j-metrics-collector</module>
-                <module>kubetest4j-log-collector</module>
+                <module>kubetest4j</module>
+                <module>kubernetes-resources</module>
+                <module>openshift-resources</module>
+                <module>test-examples</module>
+                <module>metrics-collector</module>
+                <module>log-collector</module>
             </modules>
         </profile>
         <profile>
@@ -441,12 +441,12 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>kubetest4j-common</module>
-                <module>kubetest4j-kubernetes</module>
-                <module>kubetest4j-openshift</module>
-                <module>kubetest4j-test-examples</module>
-                <module>kubetest4j-metrics-collector</module>
-                <module>kubetest4j-log-collector</module>
+                <module>kubetest4j</module>
+                <module>kubernetes-resources</module>
+                <module>openshift-resources</module>
+                <module>test-examples</module>
+                <module>metrics-collector</module>
+                <module>log-collector</module>
             </modules>
         </profile>
         <profile>
@@ -455,11 +455,11 @@
                 <activeByDefault>false</activeByDefault>
             </activation>
             <modules>
-                <module>kubetest4j-common</module>
-                <module>kubetest4j-kubernetes</module>
-                <module>kubetest4j-openshift</module>
-                <module>kubetest4j-metrics-collector</module>
-                <module>kubetest4j-log-collector</module>
+                <module>kubetest4j</module>
+                <module>kubernetes-resources</module>
+                <module>openshift-resources</module>
+                <module>metrics-collector</module>
+                <module>log-collector</module>
             </modules>
             <properties>
                 <!--suppress UnresolvedMavenProperty -->
@@ -518,11 +518,11 @@
                                     <appendAssemblyId>false</appendAssemblyId>
                                     <tarLongFileMode>posix</tarLongFileMode>
                                     <descriptors>
-                                        <descriptor>kubetest4j-common/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>kubetest4j-kubernetes/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>kubetest4j-openshift/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>kubetest4j-metrics-collector/src/main/assembly/dist.xml</descriptor>
-                                        <descriptor>kubetest4j-log-collector/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubetest4j/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>kubernetes-resources/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>openshift-resources/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>metrics-collector/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>log-collector/src/main/assembly/dist.xml</descriptor>
                                     </descriptors>
                                 </configuration>
                             </execution>
