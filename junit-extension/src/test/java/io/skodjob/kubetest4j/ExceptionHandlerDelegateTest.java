@@ -10,11 +10,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ExtensionContext.Store;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 class ExceptionHandlerDelegateTest {
 
     @Mock
-    private ConfigurationManager configurationManager;
+    private ConfigurationService configurationService;
 
     @Mock
     private ExceptionHandlerDelegate.LogCollectionCallback logCollectionCallback;
@@ -52,7 +52,7 @@ class ExceptionHandlerDelegateTest {
 
     @BeforeEach
     void setUp() {
-        delegate = new ExceptionHandlerDelegate(configurationManager, logCollectionCallback, cleanupCallback);
+        delegate = new ExceptionHandlerDelegate(configurationService, logCollectionCallback, cleanupCallback);
         lenient().when(extensionContext.getStore(any(ExtensionContext.Namespace.class))).thenReturn(store);
         lenient().when(extensionContext.getDisplayName()).thenReturn("TestMethod()");
     }
@@ -67,7 +67,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
             assertThrows(RuntimeException.class, () ->
@@ -84,7 +84,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("BeforeAll failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
             assertThrows(RuntimeException.class, () ->
@@ -101,7 +101,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("BeforeEach failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
             assertThrows(RuntimeException.class, () ->
@@ -118,7 +118,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("AfterEach failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
             assertThrows(RuntimeException.class, () ->
@@ -135,7 +135,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("AfterAll failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
             assertThrows(RuntimeException.class, () ->
@@ -157,7 +157,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -173,7 +173,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.AFTER_EACH, CleanupStrategy.MANUAL, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -184,12 +184,13 @@ class ExceptionHandlerDelegateTest {
         }
 
         @Test
-        @DisplayName("Should not collect logs when strategy is NEVER")
-        void shouldNotCollectLogsWhenStrategyIsNever() {
+        @DisplayName("Should not collect logs when collectLogs is disabled")
+        void shouldNotCollectLogsWhenCollectLogsDisabled() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.NEVER, CleanupStrategy.AUTOMATIC, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -207,7 +208,7 @@ class ExceptionHandlerDelegateTest {
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
                 CleanupStrategy.AUTOMATIC, false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -228,8 +229,9 @@ class ExceptionHandlerDelegateTest {
         void shouldTriggerCleanupWhenStrategyIsAutomatic() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.NEVER, CleanupStrategy.AUTOMATIC, false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -245,7 +247,7 @@ class ExceptionHandlerDelegateTest {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -265,7 +267,7 @@ class ExceptionHandlerDelegateTest {
         void shouldHandleNullTestConfigGracefully() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(null);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(null);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -283,7 +285,7 @@ class ExceptionHandlerDelegateTest {
             when(extensionContext.getDisplayName()).thenReturn("SimpleTestName");
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -301,7 +303,7 @@ class ExceptionHandlerDelegateTest {
             when(extensionContext.getDisplayName()).thenReturn("Complex Test Name (With Params)");
             RuntimeException testException = new RuntimeException("Test failed");
             TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
             assertThrows(RuntimeException.class, () ->
@@ -315,7 +317,7 @@ class ExceptionHandlerDelegateTest {
 
     // Helper method to create TestConfig for testing
     private TestConfig createTestConfig(LogCollectionStrategy logStrategy, CleanupStrategy cleanupStrategy,
-                                       boolean collectLogs) {
+                                        boolean collectLogs) {
         return new TestConfig(
             List.of("test-namespace"),
             cleanupStrategy,

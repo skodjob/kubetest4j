@@ -20,21 +20,21 @@ class ExceptionHandlerDelegate {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ExceptionHandlerDelegate.class);
 
-    private final ConfigurationManager configurationManager;
+    private final ConfigurationService configurationService;
     private final LogCollectionCallback logCollectionCallback;
     private final CleanupCallback cleanupCallback;
 
     /**
      * Creates a new ExceptionHandlerDelegate with the given dependencies.
      *
-     * @param configurationManager  provides access to test configuration
+     * @param configurationService  provides access to test configuration
      * @param logCollectionCallback callback for collecting logs on failure
      * @param cleanupCallback       callback for performing cleanup on failure
      */
-    ExceptionHandlerDelegate(ConfigurationManager configurationManager,
+    ExceptionHandlerDelegate(ConfigurationService configurationService,
                              LogCollectionCallback logCollectionCallback,
                              CleanupCallback cleanupCallback) {
-        this.configurationManager = configurationManager;
+        this.configurationService = configurationService;
         this.logCollectionCallback = logCollectionCallback;
         this.cleanupCallback = cleanupCallback;
     }
@@ -102,7 +102,7 @@ class ExceptionHandlerDelegate {
      * Coordinates log collection and cleanup based on test configuration.
      */
     private void handleTestFailure(ExtensionContext context, String phase) {
-        TestConfig testConfig = configurationManager.getTestConfig(context);
+        TestConfig testConfig = configurationService.getTestConfig(context);
         if (testConfig == null) {
             return;
         }

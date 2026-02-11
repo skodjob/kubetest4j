@@ -5,6 +5,7 @@
 package io.skodjob.kubetest4j;
 
 import io.fabric8.kubernetes.api.model.Namespace;
+import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
@@ -53,7 +54,7 @@ import java.util.Map;
 public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallback,
     BeforeEachCallback, AfterEachCallback, ParameterResolver,
     TestExecutionExceptionHandler, LifecycleMethodExecutionExceptionHandler,
-    NamespaceManager.MultiKubeContextProvider, LogCollectionManager.MultiKubeContextProvider {
+    NamespaceService.MultiKubeContextProvider, LogCollectionService.MultiKubeContextProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KubernetesTestExtension.class);
 
@@ -61,7 +62,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     private final ContextStoreHelper contextStoreHelper;
 
     // Configuration management
-    private final ConfigurationManager configurationManager;
+    private final ConfigurationService configurationService;
 
     // Dependency injection
     private final DependencyInjector dependencyInjector;
@@ -70,10 +71,10 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     private final ExceptionHandlerDelegate exceptionHandler;
 
     // Namespace management
-    private final NamespaceManager namespaceManager;
+    private final NamespaceService namespaceService;
 
     // Log collection management
-    private final LogCollectionManager logCollectionManager;
+    private final LogCollectionService logCollectionService;
 
 
     /**
@@ -90,19 +91,19 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     KubernetesTestExtension(ContextStoreHelper contextStoreHelper) {
         KubeResourceManager.get();
         this.contextStoreHelper = contextStoreHelper;
-        this.configurationManager = new ConfigurationManager(contextStoreHelper);
+        this.configurationService = new ConfigurationService(contextStoreHelper);
         this.dependencyInjector = new DependencyInjector(contextStoreHelper);
 
         // Create namespace manager with multi-kubeContext provider
-        this.namespaceManager = new NamespaceManager(contextStoreHelper, this);
+        this.namespaceService = new NamespaceService(contextStoreHelper, this);
 
         // Create log collection manager with kubeContext provider
-        this.logCollectionManager = new LogCollectionManager(contextStoreHelper, configurationManager, this);
+        this.logCollectionService = new LogCollectionService(contextStoreHelper, configurationService, this);
 
         // Create exception handler with callbacks for log collection and cleanup
         this.exceptionHandler = new ExceptionHandlerDelegate(
-            configurationManager,
-            logCollectionManager::collectLogs,  // Log collection callback
+            configurationService,
+            logCollectionService::collectLogs,  // Log collection callback
             this::handleAutomaticCleanup  // Cleanup callback
         );
     }
@@ -114,7 +115,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         LOGGER.info("Setting up Kubernetes test environment for class: {}",
             context.getRequiredTestClass().getSimpleName());
 
-        TestConfig testConfig = configurationManager.createAndStoreTestConfig(context);
+        TestConfig testConfig = configurationService.createAndStoreTestConfig(context);
 
         // Set up KubeResourceManager
         // Get ResourceManager for the specified context (or default)
@@ -134,12 +135,12 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
         // Set up log collection callback BEFORE creating namespaces
         if (testConfig.collectLogs()) {
-            logCollectionManager.setupLogCollector(context, testConfig, resourceManager);
-            namespaceManager.setupNamespaceAutoLabeling(resourceManager);
+            logCollectionService.setupLogCollector(context, testConfig, resourceManager);
+            namespaceService.setupNamespaceAutoLabeling(resourceManager);
         }
 
         // Set up namespaces (this will trigger the auto-labeling callback)
-        namespaceManager.setupNamespaces(context, testConfig, resourceManager);
+        namespaceService.setupNamespaces(context, testConfig, resourceManager);
 
         // Inject fields for PER_CLASS lifecycle tests that use @BeforeAll methods
         injectTestClassFields(context);
@@ -165,7 +166,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         // Clean up created namespaces if any were created during the test
         List<String> createdNamespaces = contextStoreHelper.getCreatedNamespaceNames(context);
         if (createdNamespaces != null && !createdNamespaces.isEmpty()) {
-            namespaceManager.cleanupNamespaces(context, testConfig);
+            namespaceService.cleanupNamespaces(context, testConfig);
         }
 
         // Clean up created namespaces from multi-kubeContext scenarios
@@ -178,7 +179,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         cleanupThreadLocalVariables(context);
 
         // Reset auto-labeling configuration for subsequent tests
-        NamespaceManager.resetAutoLabelingConfiguration();
+        NamespaceService.resetAutoLabelingConfiguration();
 
         LOGGER.info("TestClass {} FINISHED", context.getRequiredTestClass().getName());
         logVisualSeparator(context);
@@ -220,7 +221,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         if ("SUCCEEDED".equals(state) && testConfig.collectLogs() &&
             testConfig.logCollectionStrategy() == LogCollectionStrategy.AFTER_EACH) {
             String testName = context.getDisplayName().replace("()", "");
-            logCollectionManager.collectLogs(context, "after-each-success-" + testName.toLowerCase());
+            logCollectionService.collectLogs(context, "after-each-success-" + testName.toLowerCase());
         }
 
         // Handle cleanup by delegating to ResourceManager logic
@@ -286,7 +287,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
 
     private TestConfig getTestConfig(ExtensionContext context) {
-        return configurationManager.getTestConfig(context);
+        return configurationService.getTestConfig(context);
     }
 
 
@@ -382,12 +383,11 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
                     KubeResourceManager contextManager = contextManagers.get(clusterContext);
                     try {
                         for (String namespaceName : contextCreatedNamespaces) {
-                            io.fabric8.kubernetes.api.model.Namespace namespace =
-                                new io.fabric8.kubernetes.api.model.NamespaceBuilder()
-                                    .withNewMetadata()
-                                    .withName(namespaceName)
-                                    .endMetadata()
-                                    .build();
+                            Namespace namespace = new NamespaceBuilder()
+                                .withNewMetadata()
+                                .withName(namespaceName)
+                                .endMetadata()
+                                .build();
                             LoggerUtils.logResource("Deleting", Level.DEBUG, namespace);
                             contextManager.deleteResourceWithWait(namespace);
                         }

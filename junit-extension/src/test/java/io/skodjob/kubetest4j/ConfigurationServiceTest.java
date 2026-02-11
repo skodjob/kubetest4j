@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
  * Tests configuration creation and management logic.
  */
 @ExtendWith(MockitoExtension.class)
-class ConfigurationManagerTest {
+class ConfigurationServiceTest {
 
     @Mock
     private ContextStoreHelper contextStoreHelper;
@@ -47,13 +47,13 @@ class ConfigurationManagerTest {
     private Store store;
 
     // Use a real test class instead of mocking Class<?>
-    private Class<?> testClass = ConfigurationManagerTest.class;
+    private Class<?> testClass = ConfigurationServiceTest.class;
 
-    private ConfigurationManager configurationManager;
+    private ConfigurationService configurationService;
 
     @BeforeEach
     void setUp() {
-        configurationManager = new ConfigurationManager(contextStoreHelper);
+        configurationService = new ConfigurationService(contextStoreHelper);
         lenient().when(extensionContext.getStore(any(ExtensionContext.Namespace.class))).thenReturn(store);
         lenient().when(extensionContext.getRequiredTestClass()).thenReturn((Class) testClass);
     }
@@ -66,7 +66,7 @@ class ConfigurationManagerTest {
         @DisplayName("Should get KubernetesTest annotation from test class")
         void shouldGetKubernetesTestAnnotationFromTestClass() {
             // When - ConfigurationManagerTest doesn't have @KubernetesTest annotation
-            KubernetesTest result = configurationManager.getKubernetesTestAnnotation(extensionContext);
+            KubernetesTest result = configurationService.getKubernetesTestAnnotation(extensionContext);
 
             // Then - should return null since the real test class has no annotation
             assertNull(result);
@@ -76,7 +76,7 @@ class ConfigurationManagerTest {
         @DisplayName("Should return null when annotation is not present")
         void shouldReturnNullWhenAnnotationIsNotPresent() {
             // When - using real class without @KubernetesTest annotation
-            KubernetesTest result = configurationManager.getKubernetesTestAnnotation(extensionContext);
+            KubernetesTest result = configurationService.getKubernetesTestAnnotation(extensionContext);
 
             // Then
             assertNull(result);
@@ -95,26 +95,25 @@ class ConfigurationManagerTest {
             lenient().when(annotation.namespaces()).thenReturn(new String[]{"ns1", "ns2"});
 
             // When
-            TestConfig config = configurationManager.createTestConfig(extensionContext, annotation);
+            TestConfig config = configurationService.createTestConfig(extensionContext, annotation);
 
             // Then
             assertEquals(List.of("ns1", "ns2"), config.namespaces());
         }
 
         @Test
-        @DisplayName("Should generate namespace when none provided")
-        void shouldGenerateNamespaceWhenNoneProvided() {
+        @DisplayName("Should use default namespace when none provided")
+        void shouldUseDefaultNamespaceWhenNoneProvided() {
             // Given
             KubernetesTest annotation = createMockKubernetesTestAnnotation();
             lenient().when(annotation.namespaces()).thenReturn(new String[0]);
 
             // When
-            TestConfig config = configurationManager.createTestConfig(extensionContext, annotation);
+            TestConfig config = configurationService.createTestConfig(extensionContext, annotation);
 
             // Then
             assertEquals(1, config.namespaces().size());
-            assertTrue(config.namespaces().get(0).startsWith("test-configurationmanagertest-"));
-            assertTrue(config.namespaces().get(0).length() > 30); // Should have timestamp suffix
+            assertEquals("default-test", config.namespaces().get(0));
         }
 
         @Test
@@ -140,7 +139,7 @@ class ConfigurationManagerTest {
             when(annotation.kubeContextMappings()).thenReturn(new KubernetesTest.KubeContextMapping[0]);
 
             // When
-            TestConfig config = configurationManager.createTestConfig(extensionContext, annotation);
+            TestConfig config = configurationService.createTestConfig(extensionContext, annotation);
 
             // Then
             assertEquals(List.of("test-ns"), config.namespaces());
@@ -177,7 +176,7 @@ class ConfigurationManagerTest {
             when(kubeContextMapping.namespaceAnnotations()).thenReturn(new String[]{"deploy=auto"});
 
             // When
-            TestConfig config = configurationManager.createTestConfig(extensionContext, annotation);
+            TestConfig config = configurationService.createTestConfig(extensionContext, annotation);
 
             // Then
             assertEquals(1, config.kubeContextMappings().size());
@@ -201,7 +200,7 @@ class ConfigurationManagerTest {
 
             // When/Then - should throw exception since real class has no annotation
             IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
-                configurationManager.createAndStoreTestConfig(extensionContext));
+                configurationService.createAndStoreTestConfig(extensionContext));
 
             assertEquals("@KubernetesTest annotation not found on test class", exception.getMessage());
         }
@@ -214,7 +213,7 @@ class ConfigurationManagerTest {
             when(annotation.namespaces()).thenReturn(new String[]{"test-ns"});
 
             // When
-            TestConfig result = configurationManager.createTestConfig(extensionContext, annotation);
+            TestConfig result = configurationService.createTestConfig(extensionContext, annotation);
 
             // Then
             assertNotNull(result);
@@ -222,37 +221,6 @@ class ConfigurationManagerTest {
         }
     }
 
-    @Nested
-    @DisplayName("Namespace Generation Tests")
-    class NamespaceGenerationTests {
-
-        @Test
-        @DisplayName("Should generate namespace with class name and timestamp")
-        void shouldGenerateNamespaceWithClassNameAndTimestamp() {
-            // When
-            String namespace = configurationManager.generateNamespace(extensionContext);
-
-            // Then
-            assertTrue(namespace.startsWith("test-configurationmanagertest-"));
-            assertTrue(namespace.length() > 30); // Should have timestamp suffix
-            assertTrue(namespace.matches("test-configurationmanagertest-\\d{8}-\\d{6}"));
-        }
-
-        @Test
-        @DisplayName("Should generate namespace with consistent format")
-        void shouldGenerateNamespaceWithConsistentFormat() {
-            // When
-            String namespace1 = configurationManager.generateNamespace(extensionContext);
-            String namespace2 = configurationManager.generateNamespace(extensionContext);
-
-            // Then
-            assertTrue(namespace1.startsWith("test-configurationmanagertest-"));
-            assertTrue(namespace2.startsWith("test-configurationmanagertest-"));
-            assertTrue(namespace1.matches("test-configurationmanagertest-\\d{8}-\\d{6}"));
-            assertTrue(namespace2.matches("test-configurationmanagertest-\\d{8}-\\d{6}"));
-            // Note: May be same if called within the same second, which is acceptable
-        }
-    }
 
     @Nested
     @DisplayName("Get TestConfig Tests")
@@ -270,7 +238,7 @@ class ConfigurationManagerTest {
             when(contextStoreHelper.getTestConfig(extensionContext)).thenReturn(expectedConfig);
 
             // When
-            TestConfig result = configurationManager.getTestConfig(extensionContext);
+            TestConfig result = configurationService.getTestConfig(extensionContext);
 
             // Then
             assertEquals(expectedConfig, result);
@@ -284,7 +252,7 @@ class ConfigurationManagerTest {
             when(contextStoreHelper.getTestConfig(extensionContext)).thenReturn(null);
 
             // When
-            TestConfig result = configurationManager.getTestConfig(extensionContext);
+            TestConfig result = configurationService.getTestConfig(extensionContext);
 
             // Then
             assertNull(result);

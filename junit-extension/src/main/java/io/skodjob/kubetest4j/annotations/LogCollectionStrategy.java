@@ -19,11 +19,5 @@ public enum LogCollectionStrategy {
      * Collect logs after each test method completes, regardless of success/failure.
      * Useful for comprehensive debugging and test analysis.
      */
-    AFTER_EACH,
-
-    /**
-     * Never collect logs automatically.
-     * Log collection can still be triggered manually via the injected LogCollector.
-     */
-    NEVER
+    AFTER_EACH
 }

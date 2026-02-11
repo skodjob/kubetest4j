@@ -43,16 +43,16 @@ import static org.mockito.Mockito.when;
  * These tests verify log collection logic without requiring a real Kubernetes cluster.
  */
 @ExtendWith(MockitoExtension.class)
-class LogCollectionManagerTest {
+class LogCollectionServiceTest {
 
     @Mock
     private ContextStoreHelper contextStoreHelper;
 
     @Mock
-    private ConfigurationManager configurationManager;
+    private ConfigurationService configurationService;
 
     @Mock
-    private LogCollectionManager.MultiKubeContextProvider contextProvider;
+    private LogCollectionService.MultiKubeContextProvider contextProvider;
 
     @Mock
     private ExtensionContext extensionContext;
@@ -81,11 +81,11 @@ class LogCollectionManagerTest {
     @Mock
     private FilterWatchListDeletable<Namespace, NamespaceList, Resource<Namespace>> labelSelector;
 
-    private LogCollectionManager manager;
+    private LogCollectionService manager;
 
     @BeforeEach
     void setUp() {
-        manager = new LogCollectionManager(contextStoreHelper, configurationManager, contextProvider);
+        manager = new LogCollectionService(contextStoreHelper, configurationService, contextProvider);
         lenient().when(extensionContext.getStore(any(ExtensionContext.Namespace.class))).thenReturn(store);
         lenient().when(resourceManager.kubeClient()).thenReturn(kubeClient);
         lenient().when(resourceManager.kubeCmdClient()).thenReturn(kubeCmdClient);
@@ -165,7 +165,7 @@ class LogCollectionManagerTest {
             // Given
             TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(null);
 
             // When
@@ -183,7 +183,7 @@ class LogCollectionManagerTest {
             // Given
             TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
             when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
             when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
@@ -210,7 +210,7 @@ class LogCollectionManagerTest {
             TestConfig testConfig = createTestConfigWithContexts("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false, List.of(contextMapping));
 
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
             when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
 
@@ -258,7 +258,7 @@ class LogCollectionManagerTest {
             // Given
             TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
             when(contextProvider.getResourceManager(extensionContext))
                 .thenThrow(new RuntimeException("Test exception"));
@@ -277,7 +277,7 @@ class LogCollectionManagerTest {
             // Given
             TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
             when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
             when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
@@ -313,7 +313,7 @@ class LogCollectionManagerTest {
             // Given
             TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
             when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
             when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
@@ -335,7 +335,7 @@ class LogCollectionManagerTest {
             // Given
             TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
                 List.of("pods"), List.of(), false);
-            when(configurationManager.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
             when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
             when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());

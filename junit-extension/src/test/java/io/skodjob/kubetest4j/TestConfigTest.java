@@ -130,7 +130,7 @@ class TestConfigTest {
             "#",
             76,
             false,
-            LogCollectionStrategy.NEVER,
+            LogCollectionStrategy.ON_FAILURE,
             "",
             false,
             List.of(), // Empty namespaced resources

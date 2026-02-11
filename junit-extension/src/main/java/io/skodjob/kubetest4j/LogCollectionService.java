@@ -24,30 +24,30 @@ import java.util.Set;
  * This class handles log collection setup, multi-kubeContext log gathering,
  * and coordination with LogCollector instances across different cluster contexts.
  */
-class LogCollectionManager {
+class LogCollectionService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LogCollectionManager.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(LogCollectionService.class);
 
     // Log collection labels
-    private static final String LOG_COLLECTION_LABEL_KEY = "test-frame.io/log-collection";
+    private static final String LOG_COLLECTION_LABEL_KEY = "kubetest4j.skodjob.io/log-collection";
     private static final String LOG_COLLECTION_LABEL_VALUE = "enabled";
 
     private final ContextStoreHelper contextStoreHelper;
-    private final ConfigurationManager configurationManager;
+    private final ConfigurationService configurationService;
     private final MultiKubeContextProvider contextProvider;
 
     /**
      * Creates a new LogCollectionManager with the given dependencies.
      *
      * @param contextStoreHelper   provides access to extension kubeContext storage
-     * @param configurationManager provides access to test configuration
+     * @param configurationService provides access to test configuration
      * @param contextProvider      provides multi-kubeContext operations
      */
-    LogCollectionManager(ContextStoreHelper contextStoreHelper,
-                         ConfigurationManager configurationManager,
+    LogCollectionService(ContextStoreHelper contextStoreHelper,
+                         ConfigurationService configurationService,
                          MultiKubeContextProvider contextProvider) {
         this.contextStoreHelper = contextStoreHelper;
-        this.configurationManager = configurationManager;
+        this.configurationService = configurationService;
         this.contextProvider = contextProvider;
     }
 
@@ -92,7 +92,7 @@ class LogCollectionManager {
      * Collects logs from all contexts with the specified suffix.
      */
     public void collectLogs(ExtensionContext context, String suffix) {
-        TestConfig testConfig = configurationManager.getTestConfig(context);
+        TestConfig testConfig = configurationService.getTestConfig(context);
         LogCollector logCollector = getLogCollector(context);
 
         if (logCollector == null) {

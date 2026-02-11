@@ -144,7 +144,6 @@ class LogCollectionTest {
 
 - **`ON_FAILURE`** - Collect logs only when tests fail (default)
 - **`AFTER_EACH`** - Collect logs after each test method (success or failure)
-- **`NEVER`** - Disable automatic log collection
 
 ### Configurable Log Collection
 

@@ -7,8 +7,6 @@ package io.skodjob.kubetest4j;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,7 +16,7 @@ import java.util.stream.Collectors;
  * This class centralizes all configuration-related logic and provides
  * clean separation between configuration parsing and test execution.
  */
-class ConfigurationManager {
+class ConfigurationService {
 
     private final ContextStoreHelper contextStoreHelper;
 
@@ -27,7 +25,7 @@ class ConfigurationManager {
      *
      * @param contextStoreHelper provides access to extension kubeContext storage
      */
-    ConfigurationManager(ContextStoreHelper contextStoreHelper) {
+    ConfigurationService(ContextStoreHelper contextStoreHelper) {
         this.contextStoreHelper = contextStoreHelper;
     }
 
@@ -58,7 +56,7 @@ class ConfigurationManager {
      */
     public TestConfig createTestConfig(ExtensionContext context, KubernetesTest annotation) {
         String[] namespaces = annotation.namespaces().length == 0 ?
-            new String[]{generateNamespace(context)} : annotation.namespaces();
+            new String[]{"default-test"} : annotation.namespaces();
 
         // Convert kubeContext mappings
         List<TestConfig.KubeContextMappingConfig> contextMappings = Arrays.stream(annotation.kubeContextMappings())
@@ -83,15 +81,6 @@ class ConfigurationManager {
             Arrays.asList(annotation.collectClusterWideResources()),
             contextMappings
         );
-    }
-
-    /**
-     * Generates a unique namespace name based on the test class and timestamp.
-     */
-    public String generateNamespace(ExtensionContext context) {
-        String className = context.getRequiredTestClass().getSimpleName().toLowerCase();
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        return String.format("test-%s-%s", className, timestamp);
     }
 
     /**

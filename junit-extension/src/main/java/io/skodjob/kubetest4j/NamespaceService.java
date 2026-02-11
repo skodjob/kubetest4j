@@ -26,9 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * This class handles namespace creation, setup, cleanup, and auto-labeling
  * for both single-kubeContext and multi-kubeContext test scenarios.
  */
-class NamespaceManager {
+class NamespaceService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(NamespaceManager.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(NamespaceService.class);
 
     // Log collection labels
     private static final String LOG_COLLECTION_LABEL_KEY = "kubetest4j.skodjob.io/log-collection";
@@ -49,7 +49,7 @@ class NamespaceManager {
      * @param contextStoreHelper   provides access to extension kubeContext storage
      * @param multiContextProvider provides multi-kubeContext operations
      */
-    NamespaceManager(ContextStoreHelper contextStoreHelper, MultiKubeContextProvider multiContextProvider) {
+    NamespaceService(ContextStoreHelper contextStoreHelper, MultiKubeContextProvider multiContextProvider) {
         this.contextStoreHelper = contextStoreHelper;
         this.multiContextProvider = multiContextProvider;
     }
