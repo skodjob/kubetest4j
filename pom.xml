@@ -93,8 +93,6 @@
         <bouncycastle.version>1.83</bouncycastle.version>
 
         <it.skip>true</it.skip>
-        <!--suppress UnresolvedMavenProperty -->
-        <ut.skip>${skipTests}</ut.skip>
 
         <checkstyle.config.location>checkstyle.xml</checkstyle.config.location>
         <sonar.organization>skodjob</sonar.organization>
@@ -399,7 +397,6 @@
                             junit.jupiter.extensions.autodetection.enabled = true
                         </configurationParameters>
                     </properties>
-                    <skipTests>${ut.skip}</skipTests>
                 </configuration>
             </plugin>
             <plugin>
@@ -430,7 +427,6 @@
             <id>integration</id>
             <properties>
                 <it.skip>false</it.skip>
-                <ut.skip>true</ut.skip>
             </properties>
             <modules>
                 <module>kubetest4j</module>

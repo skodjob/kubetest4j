@@ -311,30 +311,30 @@ class DependencyInjector {
     }
 
     /**
-         * Parameter-based injection source.
-         */
-        private record ParameterInjectionSource(ParameterContext parameterContext) implements InjectionSource {
+     * Parameter-based injection source.
+     */
+    private record ParameterInjectionSource(ParameterContext parameterContext) implements InjectionSource {
 
         @Override
-            public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
-                return parameterContext.getParameter().getAnnotation(annotationType);
-            }
-
-            @Override
-            public boolean hasAnnotation(Class<? extends Annotation> annotationType) {
-                return parameterContext.isAnnotated(annotationType);
-            }
-
-            @Override
-            public Class<?> getType() {
-                return parameterContext.getParameter().getType();
-            }
-
-            @Override
-            public String getName() {
-                return parameterContext.getParameter().toString();
-            }
+        public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
+            return parameterContext.getParameter().getAnnotation(annotationType);
         }
+
+        @Override
+        public boolean hasAnnotation(Class<? extends Annotation> annotationType) {
+            return parameterContext.isAnnotated(annotationType);
+        }
+
+        @Override
+        public Class<?> getType() {
+            return parameterContext.getParameter().getType();
+        }
+
+        @Override
+        public String getName() {
+            return parameterContext.getParameter().toString();
+        }
+    }
 
     /**
      * Field-based injection source.

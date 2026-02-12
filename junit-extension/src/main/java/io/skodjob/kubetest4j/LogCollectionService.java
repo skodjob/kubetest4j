@@ -72,7 +72,8 @@ class LogCollectionService {
         LOGGER.info("Log collector configured to collect to: {}", logPath);
     }
 
-    private LogCollectorBuilder createLogBuilder(TestConfig testConfig, KubeResourceManager resourceManager, String logPath) {
+    private LogCollectorBuilder createLogBuilder(TestConfig testConfig,
+                                                 KubeResourceManager resourceManager, String logPath) {
         LogCollectorBuilder builder = new LogCollectorBuilder()
             .withRootFolderPath(logPath)
             .withKubeClient(resourceManager.kubeClient())
