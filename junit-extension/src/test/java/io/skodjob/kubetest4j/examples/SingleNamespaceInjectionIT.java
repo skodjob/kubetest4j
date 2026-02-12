@@ -5,7 +5,6 @@
 package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.Namespace;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectNamespace;
 import io.skodjob.kubetest4j.annotations.InjectNamespaces;
@@ -24,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * - Use @InjectNamespace alongside @InjectNamespaces
  * - Access namespace metadata for specific namespaces
  */
-@RequiresKubernetes
 @KubernetesTest(
     namespaces = {"frontend-ns", "backend-ns", "monitoring-ns"},
     cleanup = CleanupStrategy.AUTOMATIC,

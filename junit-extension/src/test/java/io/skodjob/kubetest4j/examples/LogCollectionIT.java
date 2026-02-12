@@ -6,7 +6,6 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
@@ -33,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * also provides comprehensive failure detection via exception handlers that
  * catch failures from ANY test lifecycle phase (beforeAll, beforeEach, etc.).
  */
-@RequiresKubernetes
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @KubernetesTest(
     namespaces = {"log-collection-test"},

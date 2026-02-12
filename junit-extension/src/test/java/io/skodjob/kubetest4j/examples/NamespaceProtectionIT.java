@@ -5,7 +5,6 @@
 package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.Namespace;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectNamespace;
 import io.skodjob.kubetest4j.annotations.InjectNamespaces;
@@ -25,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * - Only deletes namespaces that were created by the test
  * - Safely mixes existing and test-created namespaces
  */
-@RequiresKubernetes
 @KubernetesTest(
     // Mix of existing namespaces (default) and test-created namespaces
     namespaces = {"default", "protection-test-new-1", "protection-test-new-2"},

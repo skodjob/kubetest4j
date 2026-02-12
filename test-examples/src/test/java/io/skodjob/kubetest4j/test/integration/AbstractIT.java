@@ -4,7 +4,6 @@
  */
 package io.skodjob.kubetest4j.test.integration;
 
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
 import io.skodjob.kubetest4j.annotations.ResourceManager;
 import io.skodjob.kubetest4j.annotations.TestVisualSeparator;
@@ -21,7 +20,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @ResourceManager
-@RequiresKubernetes
 @TestVisualSeparator(separator = "=")
 public abstract class AbstractIT {
     static AtomicBoolean isCreateHandlerCalled = new AtomicBoolean(false);

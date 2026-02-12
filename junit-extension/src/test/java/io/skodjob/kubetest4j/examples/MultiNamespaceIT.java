@@ -11,7 +11,6 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
@@ -29,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * Example test demonstrating multi-namespace testing with explicit namespace specification.
  * Shows how to create resources in different namespaces and collect logs from all of them.
  */
-@RequiresKubernetes
 @KubernetesTest(
     // Create multiple namespaces for testing
     namespaces = {"frontend", "backend", "monitoring"},

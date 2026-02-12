@@ -8,7 +8,6 @@ import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
@@ -34,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * - Custom namespace configuration
  * - Resource lifecycle management
  */
-@RequiresKubernetes
 @KubernetesTest(
     namespaces = {"advanced-tests"},
     cleanup = CleanupStrategy.AUTOMATIC,

@@ -8,7 +8,6 @@ import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.clients.cmdClient.KubeCmdClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
@@ -30,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * - Inject namespace information
  * - Create and manage resources
  */
-@RequiresKubernetes
 @KubernetesTest(
     namespaces = {"basic-test"},
     cleanup = CleanupStrategy.AUTOMATIC,

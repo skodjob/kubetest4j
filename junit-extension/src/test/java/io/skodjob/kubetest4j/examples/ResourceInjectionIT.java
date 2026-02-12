@@ -7,7 +7,6 @@ package io.skodjob.kubetest4j.examples;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
@@ -26,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * - Automatically apply resources to the cluster
  * - Verify resources are deployed correctly
  */
-@RequiresKubernetes
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @KubernetesTest(
     namespaces = {"resource-injection-test"},

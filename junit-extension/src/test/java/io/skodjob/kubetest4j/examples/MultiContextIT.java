@@ -22,7 +22,6 @@ import io.skodjob.kubetest4j.annotations.InjectResource;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
-import io.skodjob.kubetest4j.annotations.RequiresKubernetes;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.clients.cmdClient.KubeCmdClient;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
@@ -60,7 +59,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * All kubeContexts (staging, production, development) use the same cluster but different namespaces.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@RequiresKubernetes
 @KubernetesTest(
     // Default kubeContext namespaces
     namespaces = {"local-test", "local-monitoring"},
