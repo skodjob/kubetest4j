@@ -17,7 +17,7 @@ import java.util.Optional;
 import static org.junit.platform.commons.support.AnnotationSupport.findAnnotation;
 
 /**
- * jUnit5 specific class which listening on test exception callbacks
+ * jUnit specific class which listening on test exception callbacks
  */
 public class TestExceptionCallbackListener implements
     TestExecutionExceptionHandler, LifecycleMethodExecutionExceptionHandler {

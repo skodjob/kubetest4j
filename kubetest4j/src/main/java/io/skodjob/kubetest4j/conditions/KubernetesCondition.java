@@ -26,7 +26,7 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.platform.commons.support.AnnotationSupport.findAnnotation;
 
 /**
- * JUnit 5 execution condition that checks if a Kubernetes cluster is available and accessible.
+ * JUnit execution condition that checks if a Kubernetes cluster is available and accessible.
  * Used by the {@link RequiresKubernetes} annotation to conditionally execute tests.
  */
 public class KubernetesCondition implements ExecutionCondition {

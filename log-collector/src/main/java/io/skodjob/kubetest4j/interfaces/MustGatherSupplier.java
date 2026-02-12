@@ -15,7 +15,7 @@ public interface MustGatherSupplier {
      * Save kubernetes state
      * Use your own LogCollector configuration
      *
-     * @param context junit5 extension context
+     * @param context junit extension context
      */
     void saveKubernetesState(ExtensionContext context);
 }
