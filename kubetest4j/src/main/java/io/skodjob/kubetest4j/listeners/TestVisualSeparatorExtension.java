@@ -19,7 +19,7 @@ import java.util.Optional;
 import static org.junit.platform.commons.support.AnnotationSupport.findAnnotation;
 
 /**
- * jUnit5 specific class which listening on test callbacks
+ * jUnit specific class which listening on test callbacks
  */
 public class TestVisualSeparatorExtension implements BeforeEachCallback, AfterEachCallback,
     BeforeAllCallback, AfterAllCallback {

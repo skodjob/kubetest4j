@@ -3,9 +3,16 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  SONAR_PROJECT_KEY: skodjob_kubetest4j
+
 on:
+  push:
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   verify:
@@ -31,5 +38,15 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1
 
+      - name: Verify and sonar scan
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false)
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          ./mvnw verify -P integration -Dstyle.color=always \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.projectKey=$SONAR_PROJECT_KEY
+
       - name: Verify
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
         run: ./mvnw verify -P integration -Dstyle.color=always

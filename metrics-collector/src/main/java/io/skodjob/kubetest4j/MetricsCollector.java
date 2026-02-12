@@ -547,7 +547,7 @@ public class MetricsCollector {
      *
      * <p>This simplifies calls to the metrics collection process when the default timeout is appropriate.
      * The method orchestrates the metric collection process, handling retries, exceptions, and aggregates
-     * metrics data into a map. It uses the pre-configured timeout defined in {@code TestFrameConstants}.
+     * metrics data into a map. It uses the pre-configured timeout defined in the kubetest4j constants.
      *
      * @throws MetricsCollectionException if the collection fails due to no data or errors during execution.
      *                                    This includes scenarios where no pods are found, data is incomplete,

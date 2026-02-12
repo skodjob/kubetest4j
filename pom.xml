@@ -93,8 +93,6 @@
         <bouncycastle.version>1.83</bouncycastle.version>
 
         <it.skip>true</it.skip>
-        <!--suppress UnresolvedMavenProperty -->
-        <ut.skip>${skipTests}</ut.skip>
 
         <checkstyle.config.location>checkstyle.xml</checkstyle.config.location>
         <sonar.organization>skodjob</sonar.organization>
@@ -127,6 +125,11 @@
             <dependency>
                 <groupId>io.skodjob.kubetest4j</groupId>
                 <artifactId>metrics-collector</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.skodjob.kubetest4j</groupId>
+                <artifactId>junit-extension</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -389,11 +392,13 @@
                 <inherited>true</inherited>
                 <configuration>
                     <properties>
+                        <argLine>@{argLine}
+                            -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                        </argLine>
                         <configurationParameters>
                             junit.jupiter.extensions.autodetection.enabled = true
                         </configurationParameters>
                     </properties>
-                    <skipTests>${ut.skip}</skipTests>
                 </configuration>
             </plugin>
             <plugin>
@@ -424,7 +429,6 @@
             <id>integration</id>
             <properties>
                 <it.skip>false</it.skip>
-                <ut.skip>true</ut.skip>
             </properties>
             <modules>
                 <module>kubetest4j</module>
@@ -433,6 +437,7 @@
                 <module>test-examples</module>
                 <module>metrics-collector</module>
                 <module>log-collector</module>
+                <module>junit-extension</module>
             </modules>
         </profile>
         <profile>
@@ -447,6 +452,7 @@
                 <module>test-examples</module>
                 <module>metrics-collector</module>
                 <module>log-collector</module>
+                <module>junit-extension</module>
             </modules>
         </profile>
         <profile>
@@ -460,6 +466,7 @@
                 <module>openshift-resources</module>
                 <module>metrics-collector</module>
                 <module>log-collector</module>
+                <module>junit-extension</module>
             </modules>
             <properties>
                 <!--suppress UnresolvedMavenProperty -->
@@ -523,6 +530,7 @@
                                         <descriptor>openshift-resources/src/main/assembly/dist.xml</descriptor>
                                         <descriptor>metrics-collector/src/main/assembly/dist.xml</descriptor>
                                         <descriptor>log-collector/src/main/assembly/dist.xml</descriptor>
+                                        <descriptor>junit-extension/src/main/assembly/dist.xml</descriptor>
                                     </descriptors>
                                 </configuration>
                             </execution>

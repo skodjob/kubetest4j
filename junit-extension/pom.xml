@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <artifactId>kubetest4j-parent</artifactId>
+        <groupId>io.skodjob.kubetest4j</groupId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>junit-extension</artifactId>
+
+    <licenses>
+        <license>
+            <name>The Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <name>${project.groupId}:${project.artifactId}</name>
+    <description>JUnit extensions for Kubernetes test framework</description>
+    <url>https://github.com/skodjob/kubetest4j</url>
+
+    <scm>
+        <connection>scm:git:git:/github.com/skodjob/kubetest4j.git</connection>
+        <developerConnection>scm:git:ssh://github.com/skodjob/kubetest4j.git</developerConnection>
+        <url>https://github.com/skodjob/kubetest4j</url>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub</system>
+        <url>https://github.com/skodjob/kubetest4j/issues</url>
+    </issueManagement>
+
+    <developers>
+        <developer>
+            <id>kornys</id>
+            <name>David Kornel</name>
+            <email>kornys@outlook.com</email>
+        </developer>
+    </developers>
+
+    <dependencies>
+        <!-- Main dependency -->
+        <dependency>
+            <groupId>io.skodjob.kubetest4j</groupId>
+            <artifactId>kubetest4j</artifactId>
+        </dependency>
+
+        <!-- Log collector integration -->
+        <dependency>
+            <groupId>io.skodjob.kubetest4j</groupId>
+            <artifactId>log-collector</artifactId>
+        </dependency>
+
+        <!-- JUnit dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-commons</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+        </dependency>
+
+        <!-- Fabric8 Kubernetes Client -->
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-client</artifactId>
+        </dependency>
+
+        <!-- Logger -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j2-impl</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <properties>
+        <!-- Use KUBECONFIG env var if set, otherwise default to ~/.kube/config
+             This property will be overridden by the profile if KUBECONFIG is set -->
+        <kubeconfig.path>${user.home}/.kube/config</kubeconfig.path>
+    </properties>
+
+    <profiles>
+        <!-- Profile activated when KUBECONFIG environment variable is set -->
+        <profile>
+            <id>kubeconfig-env</id>
+            <activation>
+                <property>
+                    <name>env.KUBECONFIG</name>
+                </property>
+            </activation>
+            <properties>
+                <!-- Override default with environment variable -->
+                <kubeconfig.path>${env.KUBECONFIG}</kubeconfig.path>
+            </properties>
+        </profile>
+    </profiles>
+
+    <build>
+        <plugins>
+            <!-- Maven Failsafe Plugin for integration tests with mock multi-kubeContext environment -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <!-- Set up mock multi-kubeContext environment variables -->
+                    <!-- All contexts point to the same cluster (kubeconfig.path property) -->
+                    <!-- Uses KUBECONFIG env var if set, otherwise defaults to ~/.kube/config -->
+                    <environmentVariables>
+                        <KUBECONFIG_STAGING>${kubeconfig.path}</KUBECONFIG_STAGING>
+                        <KUBECONFIG_PRODUCTION>${kubeconfig.path}</KUBECONFIG_PRODUCTION>
+                        <KUBECONFIG_DEVELOPMENT>${kubeconfig.path}</KUBECONFIG_DEVELOPMENT>
+                    </environmentVariables>
+                </configuration>
+            </plugin>
+
+            <!-- Maven Surefire Plugin for unit tests with mock multi-kubeContext environment -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Set up mock multi-kubeContext environment variables for unit tests too -->
+                    <!-- Uses KUBECONFIG env var if set, otherwise defaults to ~/.kube/config -->
+                    <environmentVariables>
+                        <KUBECONFIG_STAGING>${kubeconfig.path}</KUBECONFIG_STAGING>
+                        <KUBECONFIG_PRODUCTION>${kubeconfig.path}</KUBECONFIG_PRODUCTION>
+                        <KUBECONFIG_DEVELOPMENT>${kubeconfig.path}</KUBECONFIG_DEVELOPMENT>
+                    </environmentVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

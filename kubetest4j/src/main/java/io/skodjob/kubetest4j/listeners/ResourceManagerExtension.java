@@ -12,7 +12,7 @@ import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * jUnit5 specific class which listening on test callbacks
+ * jUnit specific class which listening on test callbacks
  */
 public class ResourceManagerExtension
     implements BeforeAllCallback, BeforeEachCallback, AfterAllCallback, AfterEachCallback {

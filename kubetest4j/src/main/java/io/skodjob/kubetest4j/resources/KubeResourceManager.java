@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -80,14 +81,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The suffix after the final underscore becomes the context id (lower‑case).
  * The default context has no suffix.
  *
- * <h3>Switching contexts in tests</h3>
+ * <h3>Multi-context usage</h3>
  *
  * <pre>
- * KubeResourceManager mgr = KubeResourceManager.get();
- * try (var ignored = mgr.useContext("prod")) {
- *     mgr.setTestContext(ctx);
- *     mgr.createResourceWithWait(myDeployment);
- * }
+ * // Default context (backward compatible)
+ * KubeResourceManager defaultMgr = KubeResourceManager.get();
+ *
+ * // Specific context instances
+ * KubeResourceManager prodMgr = KubeResourceManager.getForContext("prod");
+ * KubeResourceManager stageMgr = KubeResourceManager.getForContext("stage");
+ *
+ * // Both can be used simultaneously
+ * defaultMgr.createResourceWithWait(myDeployment);
+ * prodMgr.createResourceWithWait(prodDeployment);
  * </pre>
  */
 public final class KubeResourceManager {
@@ -96,19 +102,25 @@ public final class KubeResourceManager {
 
     private static final Map<String, TestEnvironmentVariables.ClusterConfig> CLUSTER_CONFIGS =
         KubeTestEnv.CLUSTER_CONFIGS;
-    private String storeYamlPath;
 
+    // Per-context singleton instances
+    private static final Map<String, KubeResourceManager> CONTEXT_INSTANCES = new ConcurrentHashMap<>();
+
+    // Global configuration shared across all kube cluster contexts
+    private static volatile String globalStoreYamlPath;
+    private static final AtomicReference<ResourceType<?>[]> GLOBAL_RESOURCE_TYPES =
+        new AtomicReference<>(new ResourceType<?>[]{});
+    private static final List<Consumer<HasMetadata>> GLOBAL_CREATE_CALLBACKS = new CopyOnWriteArrayList<>();
+    private static final List<Consumer<HasMetadata>> GLOBAL_DELETE_CALLBACKS = new CopyOnWriteArrayList<>();
+
+    // Instance-level variables (per kube cluster context)
+    private final String contextId;
     private final Map<String, ClusterContext<? extends KubeCmdClient<?>>> clientCache = new ConcurrentHashMap<>();
+
+    // Static variables shared
     private static final ThreadLocal<String> CURRENT_CLUSTER_CONTEXT = ThreadLocal.withInitial(() ->
         KubeTestConstants.DEFAULT_CONTEXT_NAME);
     private static final ThreadLocal<ExtensionContext> TEST_CONTEXT = new ThreadLocal<>();
-
-    private static final KubeResourceManager INSTANCE = new KubeResourceManager();
-
-    private ResourceType<?>[] resourceTypes = new ResourceType<?>[]{};
-    private final List<Consumer<HasMetadata>> createCallbacks = new CopyOnWriteArrayList<>();
-    private final List<Consumer<HasMetadata>> deleteCallbacks = new CopyOnWriteArrayList<>();
-
     private static final Map<String, Map<String, Stack<ResourceItem<?>>>> STORED_RESOURCES = new ConcurrentHashMap<>();
 
     // Lock used during store of resources that are being created by KubeResourceManager
@@ -122,8 +134,8 @@ public final class KubeResourceManager {
      */
     private record ClusterContext<K extends KubeCmdClient<K>>(KubeClient kubeClient, K cmdClient) { }
 
-    private KubeResourceManager() {
-        // Private constructor
+    private KubeResourceManager(String contextId) {
+        this.contextId = contextId;
     }
 
     /**
@@ -132,16 +144,35 @@ public final class KubeResourceManager {
     private static final Executor EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
-     * Gets KubeResourceManager instance
+     * Gets KubeResourceManager instance for the default context.
+     * This method preserves backward compatibility.
      *
-     * @return singleton instance
+     * @return singleton instance for default context
      */
     public static KubeResourceManager get() {
-        return INSTANCE;
+        return getForContext(KubeTestConstants.DEFAULT_CONTEXT_NAME);
+    }
+
+    /**
+     * Gets KubeResourceManager instance for a specific Kubernetes context.
+     * Each context has its own singleton instance with separate client connections,
+     * but shared configuration (callbacks, resource types, etc.).
+     *
+     * @param contextId the Kubernetes context identifier
+     * @return singleton instance for the specified context
+     */
+    public static KubeResourceManager getForContext(String contextId) {
+        String normalizedContextId = Optional.ofNullable(contextId)
+            .orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME)
+            .toLowerCase();
+
+        return CONTEXT_INSTANCES.computeIfAbsent(normalizedContextId,
+            KubeResourceManager::new);
     }
 
     /**
      * Set the active context for this thread and auto‑restore on close.
+     * This method is maintained for backward compatibility with existing thread-local context switching.
      *
      * @param id name of cluster context
      * @return context
@@ -194,12 +225,12 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Gets current context
+     * Gets current context for this instance
      *
      * @return context
      */
     private ClusterContext<? extends KubeCmdClient<?>> clusterContext() {
-        return clusterContext(CURRENT_CLUSTER_CONTEXT.get());
+        return clusterContext(this.contextId);
     }
 
     /* ───────────────  kube clients accessors  ─────────────── */
@@ -225,12 +256,12 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Set path for storing yaml resources
+     * Set path for storing yaml resources (applies to all contexts)
      *
      * @param path root path for storing
      */
     public void setStoreYamlPath(String path) {
-        storeYamlPath = path;
+        globalStoreYamlPath = path;
     }
 
     /**
@@ -239,34 +270,34 @@ public final class KubeResourceManager {
      * @return path
      */
     public String getStoreYamlPath() {
-        return storeYamlPath;
+        return globalStoreYamlPath;
     }
 
     /**
-     * Add resource types for special handling by resource manager
+     * Add resource types for special handling by resource manager (applies to all contexts)
      *
      * @param types resource types implementation
      */
     public void setResourceTypes(ResourceType<?>... types) {
-        this.resourceTypes = types;
+        GLOBAL_RESOURCE_TYPES.set(types);
     }
 
     /**
-     * Adds callback which is called after every created resource
+     * Adds callback which is called after every created resource (applies to all contexts)
      *
      * @param cb callback
      */
     public void addCreateCallback(Consumer<HasMetadata> cb) {
-        createCallbacks.add(cb);
+        GLOBAL_CREATE_CALLBACKS.add(cb);
     }
 
     /**
-     * Adds delete callback which is called after every deletion of resource
+     * Adds delete callback which is called after every deletion of resource (applies to all contexts)
      *
      * @param cb callback
      */
     public void addDeleteCallback(Consumer<HasMetadata> cb) {
-        deleteCallbacks.add(cb);
+        GLOBAL_DELETE_CALLBACKS.add(cb);
     }
 
     /**
@@ -309,7 +340,7 @@ public final class KubeResourceManager {
      */
     public <T extends HasMetadata> void pushToStack(T resource) {
         STORED_RESOURCES
-            .computeIfAbsent(CURRENT_CLUSTER_CONTEXT.get(), c -> new ConcurrentHashMap<>())
+            .computeIfAbsent(this.contextId, c -> new ConcurrentHashMap<>())
             .computeIfAbsent(getTestContext().getDisplayName(), t -> new Stack<>())
             .push(new ResourceItem<>(() -> deleteResourceWithWait(resource), resource));
     }
@@ -321,7 +352,7 @@ public final class KubeResourceManager {
      */
     public void pushToStack(ResourceItem<?> item) {
         STORED_RESOURCES
-            .computeIfAbsent(CURRENT_CLUSTER_CONTEXT.get(), c -> new ConcurrentHashMap<>())
+            .computeIfAbsent(this.contextId, c -> new ConcurrentHashMap<>())
             .computeIfAbsent(getTestContext().getDisplayName(), t -> new Stack<>())
             .push(item);
     }
@@ -376,7 +407,7 @@ public final class KubeResourceManager {
      * @param logLevel slf4j log level event
      */
     public void printCurrentResources(Level logLevel) {
-        String ctxId = CURRENT_CLUSTER_CONTEXT.get();
+        String ctxId = this.contextId;
         String test = getTestContext().getDisplayName();
         LOGGER.atLevel(logLevel).log("Resources in [{}]/{}", ctxId, test);
         Optional.ofNullable(STORED_RESOURCES.get(ctxId))
@@ -472,7 +503,7 @@ public final class KubeResourceManager {
         for (T resource : resources) {
             ResourceType<T> type = findResourceType(resource);
             pushToStack(resource);
-            if (storeYamlPath != null) {
+            if (globalStoreYamlPath != null) {
                 writeResourceAsYaml(resource);
             }
 
@@ -555,7 +586,7 @@ public final class KubeResourceManager {
                     }
                 }
             }
-            createCallbacks.forEach(cb -> cb.accept(resource));
+            GLOBAL_CREATE_CALLBACKS.forEach(cb -> cb.accept(resource));
         }
         if (!waiters.isEmpty()) {
             try {
@@ -628,7 +659,7 @@ public final class KubeResourceManager {
                 LOGGER.error("Deletion of {}/{} failed with the following error: {}",
                     resource.getKind(), resource.getMetadata().getName(), e.getMessage(), e);
             }
-            deleteCallbacks.forEach(cb -> cb.accept(resource));
+            GLOBAL_DELETE_CALLBACKS.forEach(cb -> cb.accept(resource));
         }
 
         handleAsyncDeletion(waiters);
@@ -809,7 +840,7 @@ public final class KubeResourceManager {
      */
     public void deleteResources(boolean async) {
         LoggerUtils.logSeparator();
-        String ctxId = CURRENT_CLUSTER_CONTEXT.get();
+        String ctxId = this.contextId;
         String testName = getTestContext().getDisplayName();
         Map<String, Stack<ResourceItem<?>>> byTest = STORED_RESOURCES.get(ctxId);
         if (byTest == null || byTest.get(testName) == null || byTest.get(testName).isEmpty()) {
@@ -851,7 +882,7 @@ public final class KubeResourceManager {
                 }
             }
             count.decrementAndGet();
-            deleteCallbacks.forEach(cb -> Optional.ofNullable(item.resource()).ifPresent(cb));
+            GLOBAL_DELETE_CALLBACKS.forEach(cb -> Optional.ofNullable(item.resource()).ifPresent(cb));
         }
         handleAsyncDeletion(waiters);
 
@@ -891,7 +922,8 @@ public final class KubeResourceManager {
      */
     @SuppressWarnings("unchecked")
     private <T extends HasMetadata> ResourceType<T> findResourceType(T resource) {
-        for (ResourceType<?> rt : resourceTypes) {
+        ResourceType<?>[] types = GLOBAL_RESOURCE_TYPES.get();
+        for (ResourceType<?> rt : types) {
             if (rt.getKind().equals(resource.getKind())) {
                 return (ResourceType<T>) rt;
             }
@@ -912,7 +944,7 @@ public final class KubeResourceManager {
 
     private void writeResourceAsYaml(HasMetadata res) {
         synchronized (CREATION_LOCK) {
-            File dir = Paths.get(storeYamlPath).resolve("test-files").resolve(CURRENT_CLUSTER_CONTEXT.get())
+            File dir = Paths.get(globalStoreYamlPath).resolve("test-files").resolve(this.contextId)
                 .resolve(getTestContext().getRequiredTestClass().getName())
                 .toFile();
             if (getTestContext().getTestMethod().isPresent()) {

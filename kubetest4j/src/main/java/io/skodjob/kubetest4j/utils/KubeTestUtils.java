@@ -17,12 +17,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Utility methods for TestFrame.
+ * Utility methods for kubetest4j.
  */
 @SuppressWarnings({"checkstyle:ClassFanOutComplexity"})
-public final class TestFrameUtils {
+public final class KubeTestUtils {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TestFrameUtils.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(KubeTestUtils.class);
 
     /**
      * Default timeout for asynchronous tests.
@@ -34,7 +34,7 @@ public final class TestFrameUtils {
      */
     public static final TimeUnit DEFAULT_TIMEOUT_UNIT = TimeUnit.SECONDS;
 
-    private TestFrameUtils() {
+    private KubeTestUtils() {
         // Private constructor to prevent instantiation
     }
 
@@ -47,7 +47,7 @@ public final class TestFrameUtils {
      */
     public static InputStream getFileFromResourceAsStream(String fileName) {
         // The class loader that loaded the class
-        ClassLoader classLoader = TestFrameUtils.class.getClassLoader();
+        ClassLoader classLoader = KubeTestUtils.class.getClassLoader();
         InputStream inputStream = classLoader.getResourceAsStream(fileName);
 
         // the stream holding the file content
