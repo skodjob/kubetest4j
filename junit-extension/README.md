@@ -4,16 +4,12 @@ A comprehensive JUnit 6 extension for Kubernetes testing that provides declarati
 
 ## Features
 
-- **Multi-Namespace Support** - Create and test across multiple namespaces
-- **Multi-Context Testing** - Test across different Kubernetes clusters simultaneously with context-specific namespaces and resources
-- **Comprehensive Log Collection** - Automatic log collection with multiple strategies and exception handling
-- **Dependency Injection** - Inject Kubernetes clients, resource managers, and resources with context-specific support
 - **Automatic Resource Management** - Configurable cleanup strategies and lifecycle management
+- **Multi-Context Testing** - Test across different Kubernetes clusters simultaneously with context-specific namespaces and resources
+- **Log Collection** - Automatic log collection with multiple strategies and exception handling
+- **Dependency Injection** - Inject Kubernetes clients, resource managers, and resources with context-specific support
 - **YAML Resource Loading** - Load and inject resources from YAML files with multi-context support
 - **YAML Storage** - Automatically store deployed resources as YAML files for debugging and audit
-- **Exception-Based Log Collection** - Capture failures from ANY test lifecycle phase
-- **Context Switching** - Test against different Kubernetes clusters
-- **Thread Safety** - Full thread safety support for parallel test execution
 - **Visual Test Output** - Enhanced test logging with visual separators
 
 ## Quick Start
@@ -74,10 +70,11 @@ class MyKubernetesTest {
 
 Create and manage multiple namespaces for complex test scenarios. **Existing namespaces are automatically protected** - only namespaces created by the test will be deleted during cleanup:
 
+> **Design Note**: `@KubernetesTest` always uses your current/default Kubernetes context as the primary context. Use `additionalKubeContexts` to test across multiple clusters simultaneously.
+
 ```java
 @KubernetesTest(
     namespaces = {"frontend", "backend", "monitoring"},
-    createNamespaces = true,
     cleanup = CleanupStrategy.AUTOMATIC
 )
 class MultiNamespaceTest {
@@ -178,11 +175,9 @@ Main annotation to enable Kubernetes test features:
 @KubernetesTest(
     // Multi-namespace support
     namespaces = {"app", "monitoring"},     // Namespaces to create/use
-    createNamespaces = true,                // Auto-create namespaces
 
     // Resource management
     cleanup = CleanupStrategy.AUTOMATIC,  // Cleanup strategy
-    kubeContext = "staging",                    // Kubernetes kubeContext
     storeYaml = true,                      // Store resource YAMLs
     yamlStorePath = "target/yamls",        // YAML storage path
 
@@ -194,15 +189,14 @@ Main annotation to enable Kubernetes test features:
     visualSeparatorChar = "#",             // Separator character
     visualSeparatorLength = 76,            // Separator length
 
-    // ===== Multi-KubeContext Configuration =====
-    kubeContextMappings = {
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "staging",                    // KubeContext name
-            namespaces = {"stg-app", "stg-db"},    // KubeContext-specific namespaces
-            createNamespaces = true,               // Create namespaces for this kubeContext
-            namespaceLabels = {"env=staging"},     // KubeContext-specific namespace labels
-            namespaceAnnotations = {"stage=stg"}, // KubeContext-specific namespace annotations
-            cleanup = CleanupStrategy.AUTOMATIC    // KubeContext-specific cleanup strategy
+    // ===== Additional Kube Contexts =====
+    additionalKubeContexts = {
+        @KubernetesTest.AdditionalKubeContext(
+            name = "staging",                      // Additional context name
+            namespaces = {"stg-app", "stg-db"},    // Context-specific namespaces
+            namespaceLabels = {"env=staging"},     // Context-specific namespace labels
+            namespaceAnnotations = {"stage=stg"}, // Context-specific namespace annotations
+            cleanup = CleanupStrategy.AUTOMATIC   // Context-specific cleanup strategy
         )
     },
 
@@ -456,23 +450,40 @@ class ResourceTest {
 
 ### Single Context Testing
 
-Test against different Kubernetes clusters:
+Test against the default Kubernetes context:
 
 ```java
 @KubernetesTest(
-    namespaces = {"staging-test"},
-    kubeContext = "staging"
+    namespaces = {"staging-test"}
 )
-class StagingTest {
-    // Tests run against staging cluster
+class DefaultContextTest {
+    // Tests run against current/default Kubernetes context
+    // No additional context configuration needed
 }
+```
 
+To test against different clusters, configure your `kubectl` context or use additional contexts:
+
+```java
 @KubernetesTest(
-    namespaces = {"prod-test"},
-    kubeContext = "prod"
+    namespaces = {"local-test"},
+    additionalKubeContexts = {
+        @KubernetesTest.AdditionalKubeContext(
+            name = "staging",
+            namespaces = {"stg-test"}
+        )
+    }
 )
-class ProductionTest {
-    // Tests run against production cluster
+class MultiClusterTest {
+    @Test
+    void testDefaultContext(@InjectKubeClient KubeClient defaultClient) {
+        // Tests against current context
+    }
+
+    @Test
+    void testStagingContext(@InjectKubeClient(kubeContext = "staging") KubeClient stagingClient) {
+        // Tests against staging context
+    }
 }
 ```
 
@@ -482,31 +493,27 @@ Test across multiple Kubernetes clusters simultaneously with context-specific na
 
 ```java
 @KubernetesTest(
-    // Default/primary kubeContext namespaces
+    // Primary context configuration (uses default/current kubeconfig context)
     namespaces = {"local-test", "local-monitoring"},
-    createNamespaces = true,
     storeYaml = true,
     yamlStorePath = "target/test-yamls",
 
-    // Multi-kubeContext configuration
-    kubeContextMappings = {
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "staging",
+    // Additional context configuration
+    additionalKubeContexts = {
+        @KubernetesTest.AdditionalKubeContext(
+            name = "staging",
             namespaces = {"stg-frontend", "stg-backend"},
-            createNamespaces = true,
             namespaceLabels = {"environment=staging", "tier=application"},
             cleanup = CleanupStrategy.AUTOMATIC
         ),
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "production",
+        @KubernetesTest.AdditionalKubeContext(
+            name = "production",
             namespaces = {"prod-api", "prod-cache"},
-            createNamespaces = true,
             namespaceLabels = {"environment=production"}
         ),
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "development",
+        @KubernetesTest.AdditionalKubeContext(
+            name = "development",
             namespaces = {"dev-experimental"},
-            createNamespaces = true,
             namespaceLabels = {"team=platform", "purpose=testing"}
         )
     }
@@ -652,10 +659,10 @@ Automatically store deployed resources as YAML files for debugging and audit pur
     storeYaml = true,                      // Enable YAML storage
     yamlStorePath = "target/test-yamls",   // Storage directory (default: target/test-yamls)
 
-    // Multi-kubeContext YAML storage
-    kubeContextMappings = {
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "staging",
+    // Additional contexts for YAML storage
+    additionalKubeContexts = {
+        @KubernetesTest.AdditionalKubeContext(
+            name = "staging",
             namespaces = {"stg-app"}
         )
     }
@@ -717,7 +724,6 @@ target/test-yamls/
 ```java
 @KubernetesTest(
     namespaces = {"app-frontend", "app-backend", "monitoring"},
-    createNamespaces = true,
     namespaceLabels = {
         "environment=test",
         "team=backend",
@@ -764,7 +770,6 @@ class SharedResourceTest {
 ```java
 @KubernetesTest(
     namespaces = {"app", "monitoring"},
-    createNamespaces = true,
     namespaceLabels = {"environment=test", "team=backend"}
 )
 class NamespaceTest {
@@ -860,20 +865,19 @@ See comprehensive examples in the test directory:
 - **[`ResourceInjectionIT`](src/test/java/io/skodjob/kubetest4j/examples/ResourceInjectionIT.java)** - YAML resource injection patterns
 - **[`LogCollectionIT`](src/test/java/io/skodjob/kubetest4j/examples/LogCollectionIT.java)** - Log collection strategies and configuration
 
-## ⚠️ Important Notes
+## Important Notes
 
 ### Namespace Protection and Management
 
 The framework **automatically protects existing namespaces** from deletion:
 
-- ✅ **Existing namespaces**: If a namespace already exists, it will be used as-is and **never deleted**
-- ✅ **Created namespaces**: Only namespaces created by the test will be deleted during cleanup
-- ✅ **Mixed scenarios**: You can safely mix existing namespaces (like `default`, `kube-system`) with test-created ones
+- **Existing namespaces**: If a namespace already exists, it will be used as-is and **never deleted**
+- **Created namespaces**: Only namespaces created by the test will be deleted during cleanup
+- **Mixed scenarios**: You can safely mix existing namespaces (like `default`, `kube-system`) with test-created ones
 
 ```java
 @KubernetesTest(
-    namespaces = {"default", "my-test-ns", "existing-ns"}, // Mix of existing and new
-    createNamespaces = true
+    namespaces = {"default", "my-test-ns", "existing-ns"} // Mix of existing and new
 )
 class SafeNamespaceTest {
     // 'default' and 'existing-ns' will be protected from deletion
@@ -886,7 +890,7 @@ class SafeNamespaceTest {
 **All resources must explicitly specify their namespace** in the metadata. The framework does not inject or default namespaces:
 
 ```java
-// ✅ CORRECT - Namespace explicitly specified
+// CORRECT - Namespace explicitly specified
 ConfigMap config = new ConfigMapBuilder()
     .withNewMetadata()
     .withName("config")
@@ -894,7 +898,7 @@ ConfigMap config = new ConfigMapBuilder()
     .endMetadata()
     .build();
 
-// ❌ INCORRECT - No namespace specified
+// INCORRECT - No namespace specified
 ConfigMap config = new ConfigMapBuilder()
     .withNewMetadata()
     .withName("config")
@@ -906,7 +910,7 @@ ConfigMap config = new ConfigMapBuilder()
 ### YAML Resources Must Include Namespace
 
 ```yaml
-# ✅ CORRECT
+# CORRECT
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -915,7 +919,7 @@ metadata:
 data:
   key: value
 
-# ❌ INCORRECT - Missing namespace
+# INCORRECT - Missing namespace
 apiVersion: v1
 kind: ConfigMap
 metadata:

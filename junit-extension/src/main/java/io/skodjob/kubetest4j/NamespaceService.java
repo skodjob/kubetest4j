@@ -78,11 +78,11 @@ class NamespaceService {
             performNamespaceSetup(setupContext);
         }
 
-        // Set up kubeContext-specific namespaces
-        for (TestConfig.KubeContextMappingConfig contextMapping : testConfig.kubeContextMappings()) {
-            String clusterContext = contextMapping.kubeContext();
+        // Set up additional kubeContext namespaces
+        for (TestConfig.AdditionalKubeContextConfig additionalContext : testConfig.additionalKubeContexts()) {
+            String clusterContext = additionalContext.name();
             LOGGER.info("Setting up namespaces for kubeContext '{}': {}", clusterContext,
-                String.join(", ", contextMapping.namespaces()));
+                String.join(", ", additionalContext.namespaces()));
 
             // Get or create ResourceManager for this kubeContext
             KubeResourceManager contextResourceManager =
@@ -92,10 +92,10 @@ class NamespaceService {
             List<String> contextCreatedNamespaces =
                 multiContextProvider.getOrCreateCreatedNamespacesForKubeContext(context, clusterContext);
 
-            for (String namespaceName : contextMapping.namespaces()) {
+            for (String namespaceName : additionalContext.namespaces()) {
                 NamespaceSetupContext setupContext = new NamespaceSetupContext(
                     namespaceName, clusterContext, testConfig, contextResourceManager,
-                    contextNamespaceObjects, contextCreatedNamespaces, context, contextMapping
+                    contextNamespaceObjects, contextCreatedNamespaces, context, additionalContext
                 );
                 performNamespaceSetup(setupContext);
             }
@@ -239,8 +239,8 @@ class NamespaceService {
             }
 
             // Add custom labels from kubeContext mapping if available
-            if (setupContext.contextMapping() != null) {
-                for (String label : setupContext.contextMapping().namespaceLabels()) {
+            if (setupContext.additionalContext() != null) {
+                for (String label : setupContext.additionalContext().namespaceLabels()) {
                     String[] parts = label.split("=", 2);
                     if (parts.length == 2) {
                         labels.put(parts[0], parts[1]);
@@ -260,8 +260,8 @@ class NamespaceService {
             }
 
             // Add annotations from kubeContext mapping if available
-            if (setupContext.contextMapping() != null) {
-                for (String annotation : setupContext.contextMapping().namespaceAnnotations()) {
+            if (setupContext.additionalContext() != null) {
+                for (String annotation : setupContext.additionalContext().namespaceAnnotations()) {
                     String[] parts = annotation.split("=", 2);
                     if (parts.length == 2) {
                         annotations.put(parts[0], parts[1]);
@@ -373,7 +373,7 @@ class NamespaceService {
         Map<String, Namespace> namespaceObjects,
         List<String> createdNamespaces,
         ExtensionContext extensionContext,
-        TestConfig.KubeContextMappingConfig contextMapping
+        TestConfig.AdditionalKubeContextConfig additionalContext
     ) {
     }
 }

@@ -156,7 +156,7 @@ class DependencyInjector {
      * Unified KubeClient injection logic.
      */
     private KubeClient injectKubeClient(InjectKubeClient annotation, ExtensionContext context) {
-        String clusterContext = annotation.context();
+        String clusterContext = annotation.kubeContext();
 
         KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
         if (resourceManager == null) {
@@ -170,7 +170,7 @@ class DependencyInjector {
      * Unified CmdKubeClient injection logic.
      */
     private KubeCmdClient<?> injectCmdKubeClient(InjectCmdKubeClient annotation, ExtensionContext context) {
-        String clusterContext = annotation.context();
+        String clusterContext = annotation.kubeContext();
 
         KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
         if (resourceManager == null) {
@@ -184,7 +184,7 @@ class DependencyInjector {
      * Unified ResourceManager injection logic.
      */
     private KubeResourceManager injectResourceManager(InjectResourceManager annotation, ExtensionContext context) {
-        String clusterContext = annotation.context();
+        String clusterContext = annotation.kubeContext();
 
         KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
         if (resourceManager == null) {
@@ -201,7 +201,7 @@ class DependencyInjector {
     private <T extends HasMetadata> T injectResource(InjectResource annotation, Class<?> targetType,
                                                      ExtensionContext context) {
         try {
-            String clusterContext = annotation.context();
+            String clusterContext = annotation.kubeContext();
             KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
 
             if (resourceManager == null) {
@@ -240,7 +240,7 @@ class DependencyInjector {
      * Unified Namespaces injection logic.
      */
     private Map<String, Namespace> injectNamespaces(InjectNamespaces annotation, ExtensionContext context) {
-        String clusterContext = annotation.context();
+        String clusterContext = annotation.kubeContext();
 
         Map<String, Namespace> namespaceObjects = getNamespaceObjectsForContext(context, clusterContext);
         if (namespaceObjects == null) {
@@ -255,7 +255,7 @@ class DependencyInjector {
      */
     private Namespace injectNamespace(InjectNamespace annotation, ExtensionContext context) {
         String namespaceName = annotation.name();
-        String clusterContext = annotation.context();
+        String clusterContext = annotation.kubeContext();
 
         Map<String, Namespace> namespaceObjects = getNamespaceObjectsForContext(context, clusterContext);
         if (namespaceObjects == null) {
@@ -311,35 +311,30 @@ class DependencyInjector {
     }
 
     /**
-     * Parameter-based injection source.
-     */
-    private static class ParameterInjectionSource implements InjectionSource {
-        private final ParameterContext parameterContext;
-
-        ParameterInjectionSource(ParameterContext parameterContext) {
-            this.parameterContext = parameterContext;
-        }
+         * Parameter-based injection source.
+         */
+        private record ParameterInjectionSource(ParameterContext parameterContext) implements InjectionSource {
 
         @Override
-        public <T extends java.lang.annotation.Annotation> T getAnnotation(Class<T> annotationType) {
-            return parameterContext.getParameter().getAnnotation(annotationType);
-        }
+            public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
+                return parameterContext.getParameter().getAnnotation(annotationType);
+            }
 
-        @Override
-        public boolean hasAnnotation(Class<? extends java.lang.annotation.Annotation> annotationType) {
-            return parameterContext.isAnnotated(annotationType);
-        }
+            @Override
+            public boolean hasAnnotation(Class<? extends Annotation> annotationType) {
+                return parameterContext.isAnnotated(annotationType);
+            }
 
-        @Override
-        public Class<?> getType() {
-            return parameterContext.getParameter().getType();
-        }
+            @Override
+            public Class<?> getType() {
+                return parameterContext.getParameter().getType();
+            }
 
-        @Override
-        public String getName() {
-            return parameterContext.getParameter().toString();
+            @Override
+            public String getName() {
+                return parameterContext.getParameter().toString();
+            }
         }
-    }
 
     /**
      * Field-based injection source.

@@ -204,7 +204,7 @@ class LogCollectionServiceTest {
         @DisplayName("Should collect logs from multiple contexts")
         void shouldCollectLogsFromMultipleContexts() {
             // Given
-            TestConfig.KubeContextMappingConfig contextMapping = new TestConfig.KubeContextMappingConfig(
+            TestConfig.AdditionalKubeContextConfig contextMapping = new TestConfig.AdditionalKubeContextConfig(
                 "staging", List.of("stg-ns"), CleanupStrategy.AUTOMATIC, List.of(), List.of()
             );
             TestConfig testConfig = createTestConfigWithContexts("/logs", LogCollectionStrategy.ON_FAILURE,
@@ -361,7 +361,6 @@ class LogCollectionServiceTest {
         return new TestConfig(
             List.of("test-namespace"),
             CleanupStrategy.AUTOMATIC,
-            "",
             false,
             "",
             List.of(),
@@ -381,11 +380,10 @@ class LogCollectionServiceTest {
     private TestConfig createTestConfigWithContexts(String logPath, LogCollectionStrategy strategy,
                                                     List<String> namespacedResources, List<String> clusterResources,
                                                     boolean collectPreviousLogs,
-                                                    List<TestConfig.KubeContextMappingConfig> contextMappings) {
+                                                    List<TestConfig.AdditionalKubeContextConfig> contextMappings) {
         return new TestConfig(
             List.of("test-namespace"),
             CleanupStrategy.AUTOMATIC,
-            "",
             false,
             "",
             List.of(),

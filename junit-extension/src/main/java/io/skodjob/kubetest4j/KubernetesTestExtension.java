@@ -118,9 +118,8 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         TestConfig testConfig = configurationService.createAndStoreTestConfig(context);
 
         // Set up KubeResourceManager
-        // Get ResourceManager for the specified context (or default)
-        String contextId = testConfig.context().isEmpty() ?
-            KubeTestConstants.DEFAULT_CONTEXT_NAME : testConfig.context();
+        // Get ResourceManager for the default context (primary test context)
+        String contextId = KubeTestConstants.DEFAULT_CONTEXT_NAME;
         KubeResourceManager resourceManager = KubeResourceManager.getForContext(contextId);
 
         resourceManager.setTestContext(context);

@@ -54,13 +54,6 @@ public @interface KubernetesTest {
      */
     CleanupStrategy cleanup() default CleanupStrategy.AUTOMATIC;
 
-    /**
-     * Kubernetes cluster kubeContext to use for this test.
-     * Corresponds to kubeContext configuration in environment variables.
-     *
-     * @return cluster kubeContext name
-     */
-    String kubeContext() default "";
 
     /**
      * Whether to store YAML representations of created resources to disk.
@@ -159,48 +152,52 @@ public @interface KubernetesTest {
     // ===============================
 
     /**
-     * Kubernetes kubeContext mappings for multi-cluster testing.
-     * Each mapping defines namespaces and configuration for a specific Kubernetes kubeContext.
+     * Additional Kubernetes contexts for multi-context testing.
+     * Each additional context defines namespaces and configuration beyond the primary context.
+     * The primary context is defined by the top-level annotation parameters.
      *
-     * @return array of Kubernetes kubeContext mappings
+     * @return array of additional Kubernetes contexts
      */
-    KubeContextMapping[] kubeContextMappings() default {};
+    AdditionalKubeContext[] additionalKubeContexts() default {};
 
     /**
-     * Defines namespace creation and configuration for a specific Kubernetes kubeContext.
+     * Defines an additional Kubernetes context configuration.
+     * This is used alongside the primary context defined by the main annotation parameters.
      */
-    @interface KubeContextMapping {
+    @interface AdditionalKubeContext {
         /**
-         * The Kubernetes kubeContext name.
+         * The name of the additional Kubernetes context.
          *
-         * @return Kubernetes kubeContext name
+         * @return Kubernetes context name
          */
-        String kubeContext();
+        String name();
 
         /**
-         * Namespaces to create in this kubeContext.
+         * Namespaces to create in this additional context.
          *
          * @return array of namespace names
          */
         String[] namespaces();
 
-
         /**
-         * Cleanup strategy for this kubeContext.
+         * Cleanup strategy for this additional context.
+         * Defaults to AUTOMATIC if not specified.
          *
          * @return cleanup strategy
          */
         CleanupStrategy cleanup() default CleanupStrategy.AUTOMATIC;
 
         /**
-         * Labels to apply to namespaces in this kubeContext.
+         * Labels to apply to namespaces in this additional context.
+         * Format: "key=value" pairs.
          *
          * @return array of label key=value pairs
          */
         String[] namespaceLabels() default {};
 
         /**
-         * Annotations to apply to namespaces in this kubeContext.
+         * Annotations to apply to namespaces in this additional context.
+         * Format: "key=value" pairs.
          *
          * @return array of annotation key=value pairs
          */

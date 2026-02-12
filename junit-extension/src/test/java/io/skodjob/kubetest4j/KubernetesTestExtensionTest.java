@@ -71,7 +71,6 @@ class KubernetesTestExtensionTest {
             TestConfig config = new TestConfig(
                 List.of("test-ns"),
                 CleanupStrategy.AUTOMATIC,
-                "",
                 false,
                 "",
                 List.of(),
@@ -91,7 +90,6 @@ class KubernetesTestExtensionTest {
             assertNotNull(config);
             assertEquals(List.of("test-ns"), config.namespaces());
             assertEquals(CleanupStrategy.AUTOMATIC, config.cleanup());
-            assertEquals("", config.context());
             assertFalse(config.storeYaml());
             assertEquals("", config.yamlStorePath());
             assertEquals("#", config.visualSeparatorChar());
@@ -107,7 +105,6 @@ class KubernetesTestExtensionTest {
             TestConfig config = new TestConfig(
                 Arrays.asList("ns1", "ns2"),
                 CleanupStrategy.MANUAL,
-                "staging",
                 true,
                 "target/yamls",
                 List.of("env=test"),
@@ -126,7 +123,6 @@ class KubernetesTestExtensionTest {
             // Then
             assertEquals(Arrays.asList("ns1", "ns2"), config.namespaces());
             assertEquals(CleanupStrategy.MANUAL, config.cleanup());
-            assertEquals("staging", config.context());
             assertTrue(config.storeYaml());
             assertEquals("target/yamls", config.yamlStorePath());
             assertEquals(List.of("env=test"), config.namespaceLabels());
@@ -148,7 +144,6 @@ class KubernetesTestExtensionTest {
             TestConfig config = new TestConfig(
                 List.of("ns1", "ns2", "ns3"),
                 CleanupStrategy.AUTOMATIC,
-                "test-kubeContext",
                 true,
                 "/tmp/yamls",
                 List.of("label1=value1", "label2=value2"),
@@ -167,7 +162,6 @@ class KubernetesTestExtensionTest {
             // Then - Verify all properties
             assertEquals(List.of("ns1", "ns2", "ns3"), config.namespaces());
             assertEquals(CleanupStrategy.AUTOMATIC, config.cleanup());
-            assertEquals("test-kubeContext", config.context());
             assertTrue(config.storeYaml());
             assertEquals("/tmp/yamls", config.yamlStorePath());
             assertEquals(List.of("label1=value1", "label2=value2"), config.namespaceLabels());
@@ -254,15 +248,15 @@ class KubernetesTestExtensionTest {
         @DisplayName("Should create TestConfig with kubeContext mappings")
         void shouldCreateTestConfigWithContextMappings() {
             // Given - Create kubeContext mappings
-            List<TestConfig.KubeContextMappingConfig> contextMappings = List.of(
-                new TestConfig.KubeContextMappingConfig(
+            List<TestConfig.AdditionalKubeContextConfig> contextMappings = List.of(
+                new TestConfig.AdditionalKubeContextConfig(
                     "staging-cluster",
                     List.of("stg-app", "stg-db"),
                     CleanupStrategy.AUTOMATIC,
                     List.of("env=staging"),
                     List.of("stage=staging")
                 ),
-                new TestConfig.KubeContextMappingConfig(
+                new TestConfig.AdditionalKubeContextConfig(
                     "production-cluster",
                     List.of("prod-api"),
                     CleanupStrategy.MANUAL,
@@ -274,7 +268,6 @@ class KubernetesTestExtensionTest {
             TestConfig config = new TestConfig(
                 List.of("default-ns"),
                 CleanupStrategy.AUTOMATIC,
-                "",
                 false,
                 "",
                 List.of(),
@@ -291,29 +284,29 @@ class KubernetesTestExtensionTest {
             );
 
             // Then - Verify kubeContext mappings
-            assertNotNull(config.kubeContextMappings());
-            assertEquals(2, config.kubeContextMappings().size());
+            assertNotNull(config.additionalKubeContexts());
+            assertEquals(2, config.additionalKubeContexts().size());
 
             // Verify staging mapping
-            TestConfig.KubeContextMappingConfig stagingMapping = config.kubeContextMappings().get(0);
-            assertEquals("staging-cluster", stagingMapping.kubeContext());
+            TestConfig.AdditionalKubeContextConfig stagingMapping = config.additionalKubeContexts().get(0);
+            assertEquals("staging-cluster", stagingMapping.name());
             assertEquals(List.of("stg-app", "stg-db"), stagingMapping.namespaces());
             assertEquals(CleanupStrategy.AUTOMATIC, stagingMapping.cleanup());
             assertEquals(List.of("env=staging"), stagingMapping.namespaceLabels());
             assertEquals(List.of("stage=staging"), stagingMapping.namespaceAnnotations());
 
             // Verify production mapping
-            TestConfig.KubeContextMappingConfig prodMapping = config.kubeContextMappings().get(1);
-            assertEquals("production-cluster", prodMapping.kubeContext());
+            TestConfig.AdditionalKubeContextConfig prodMapping = config.additionalKubeContexts().get(1);
+            assertEquals("production-cluster", prodMapping.name());
             assertEquals(List.of("prod-api"), prodMapping.namespaces());
             assertEquals(CleanupStrategy.MANUAL, prodMapping.cleanup());
         }
 
         @Test
-        @DisplayName("Should verify KubeContextMappingConfig properties")
-        void shouldVerifyKubeContextMappingConfigProperties() {
+        @DisplayName("Should verify AdditionalKubeContextConfig properties")
+        void shouldVerifyAdditionalKubeContextConfigProperties() {
             // Given
-            TestConfig.KubeContextMappingConfig config = new TestConfig.KubeContextMappingConfig(
+            TestConfig.AdditionalKubeContextConfig config = new TestConfig.AdditionalKubeContextConfig(
                 "test-kubeContext",
                 List.of("ns1", "ns2"),
                 CleanupStrategy.MANUAL,
@@ -322,7 +315,7 @@ class KubernetesTestExtensionTest {
             );
 
             // Then
-            assertEquals("test-kubeContext", config.kubeContext());
+            assertEquals("test-kubeContext", config.name());
             assertEquals(List.of("ns1", "ns2"), config.namespaces());
             assertEquals(CleanupStrategy.MANUAL, config.cleanup());
             assertEquals(List.of("label1=value1", "label2=value2"), config.namespaceLabels());
@@ -341,7 +334,6 @@ class KubernetesTestExtensionTest {
             TestConfig automaticConfig = new TestConfig(
                 List.of("test"),
                 CleanupStrategy.AUTOMATIC,
-                "",
                 false,
                 "",
                 List.of(),
@@ -360,7 +352,6 @@ class KubernetesTestExtensionTest {
             TestConfig manualConfig = new TestConfig(
                 List.of("test"),
                 CleanupStrategy.MANUAL,
-                "",
                 false,
                 "",
                 List.of(),
@@ -388,7 +379,6 @@ class KubernetesTestExtensionTest {
                 TestConfig config = new TestConfig(
                     List.of("test"),
                     CleanupStrategy.AUTOMATIC,
-                    "",
                     false,
                     "",
                     List.of(),

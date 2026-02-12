@@ -123,7 +123,6 @@ class ConfigurationServiceTest {
             KubernetesTest annotation = createMockKubernetesTestAnnotation();
             when(annotation.namespaces()).thenReturn(new String[]{"test-ns"});
             when(annotation.cleanup()).thenReturn(CleanupStrategy.MANUAL);
-            when(annotation.kubeContext()).thenReturn("test-kubeContext");
             when(annotation.storeYaml()).thenReturn(true);
             when(annotation.yamlStorePath()).thenReturn("/test/path");
             when(annotation.namespaceLabels()).thenReturn(new String[]{"label=value"});
@@ -136,7 +135,7 @@ class ConfigurationServiceTest {
             when(annotation.collectPreviousLogs()).thenReturn(true);
             when(annotation.collectNamespacedResources()).thenReturn(new String[]{"pods", "services"});
             when(annotation.collectClusterWideResources()).thenReturn(new String[]{"nodes"});
-            when(annotation.kubeContextMappings()).thenReturn(new KubernetesTest.KubeContextMapping[0]);
+            when(annotation.additionalKubeContexts()).thenReturn(new KubernetesTest.AdditionalKubeContext[0]);
 
             // When
             TestConfig config = configurationService.createTestConfig(extensionContext, annotation);
@@ -144,7 +143,6 @@ class ConfigurationServiceTest {
             // Then
             assertEquals(List.of("test-ns"), config.namespaces());
             assertEquals(CleanupStrategy.MANUAL, config.cleanup());
-            assertEquals("test-kubeContext", config.context());
             assertTrue(config.storeYaml());
             assertEquals("/test/path", config.yamlStorePath());
             assertEquals(List.of("label=value"), config.namespaceLabels());
@@ -161,27 +159,27 @@ class ConfigurationServiceTest {
 
         @Test
         @DisplayName("Should convert kubeContext mappings from annotation")
-        void shouldConvertKubeContextMappingsFromAnnotation() {
+        void shouldConvertAdditionalKubeContextsFromAnnotation() {
             // Given
             KubernetesTest annotation = createMockKubernetesTestAnnotation();
-            KubernetesTest.KubeContextMapping kubeContextMapping = createMockKubeContextMappingAnnotation();
-            when(annotation.kubeContextMappings())
-                .thenReturn(new KubernetesTest.KubeContextMapping[]{kubeContextMapping});
+            KubernetesTest.AdditionalKubeContext additionalContext = createMockAdditionalKubeContextAnnotation();
+            when(annotation.additionalKubeContexts())
+                .thenReturn(new KubernetesTest.AdditionalKubeContext[]{additionalContext});
             when(annotation.namespaces()).thenReturn(new String[]{"test-ns"});
 
-            when(kubeContextMapping.kubeContext()).thenReturn("staging");
-            when(kubeContextMapping.namespaces()).thenReturn(new String[]{"stg-ns1", "stg-ns2"});
-            when(kubeContextMapping.cleanup()).thenReturn(CleanupStrategy.AUTOMATIC);
-            when(kubeContextMapping.namespaceLabels()).thenReturn(new String[]{"env=staging"});
-            when(kubeContextMapping.namespaceAnnotations()).thenReturn(new String[]{"deploy=auto"});
+            when(additionalContext.name()).thenReturn("staging");
+            when(additionalContext.namespaces()).thenReturn(new String[]{"stg-ns1", "stg-ns2"});
+            when(additionalContext.cleanup()).thenReturn(CleanupStrategy.AUTOMATIC);
+            when(additionalContext.namespaceLabels()).thenReturn(new String[]{"env=staging"});
+            when(additionalContext.namespaceAnnotations()).thenReturn(new String[]{"deploy=auto"});
 
             // When
             TestConfig config = configurationService.createTestConfig(extensionContext, annotation);
 
             // Then
-            assertEquals(1, config.kubeContextMappings().size());
-            TestConfig.KubeContextMappingConfig mapping = config.kubeContextMappings().get(0);
-            assertEquals("staging", mapping.kubeContext());
+            assertEquals(1, config.additionalKubeContexts().size());
+            TestConfig.AdditionalKubeContextConfig mapping = config.additionalKubeContexts().get(0);
+            assertEquals("staging", mapping.name());
             assertEquals(List.of("stg-ns1", "stg-ns2"), mapping.namespaces());
             assertEquals(CleanupStrategy.AUTOMATIC, mapping.cleanup());
             assertEquals(List.of("env=staging"), mapping.namespaceLabels());
@@ -231,7 +229,7 @@ class ConfigurationServiceTest {
         void shouldGetTestConfigFromExtensionContextStoreHelper() {
             // Given
             TestConfig expectedConfig = new TestConfig(
-                List.of("test-ns"), CleanupStrategy.AUTOMATIC, "", false, "",
+                List.of("test-ns"), CleanupStrategy.AUTOMATIC, false, "",
                 List.of(), List.of(), "#", 76, false, LogCollectionStrategy.ON_FAILURE,
                 "", false, List.of("pods"), List.of(), List.of()
             );
@@ -266,7 +264,6 @@ class ConfigurationServiceTest {
         // Set up default return values for all annotation methods
         when(annotation.namespaces()).thenReturn(new String[0]);
         when(annotation.cleanup()).thenReturn(CleanupStrategy.AUTOMATIC);
-        when(annotation.kubeContext()).thenReturn("");
         when(annotation.storeYaml()).thenReturn(false);
         when(annotation.yamlStorePath()).thenReturn("");
         when(annotation.namespaceLabels()).thenReturn(new String[0]);
@@ -279,21 +276,21 @@ class ConfigurationServiceTest {
         when(annotation.collectPreviousLogs()).thenReturn(false);
         when(annotation.collectNamespacedResources()).thenReturn(new String[]{"pods"});
         when(annotation.collectClusterWideResources()).thenReturn(new String[0]);
-        when(annotation.kubeContextMappings()).thenReturn(new KubernetesTest.KubeContextMapping[0]);
+        when(annotation.additionalKubeContexts()).thenReturn(new KubernetesTest.AdditionalKubeContext[0]);
 
         return annotation;
     }
 
-    private KubernetesTest.KubeContextMapping createMockKubeContextMappingAnnotation() {
-        KubernetesTest.KubeContextMapping kubeContextMapping = mock(KubernetesTest.KubeContextMapping.class);
+    private KubernetesTest.AdditionalKubeContext createMockAdditionalKubeContextAnnotation() {
+        KubernetesTest.AdditionalKubeContext additionalContext = mock(KubernetesTest.AdditionalKubeContext.class);
 
         // Set up default return values
-        when(kubeContextMapping.kubeContext()).thenReturn("");
-        when(kubeContextMapping.namespaces()).thenReturn(new String[0]);
-        when(kubeContextMapping.cleanup()).thenReturn(CleanupStrategy.AUTOMATIC);
-        when(kubeContextMapping.namespaceLabels()).thenReturn(new String[0]);
-        when(kubeContextMapping.namespaceAnnotations()).thenReturn(new String[0]);
+        when(additionalContext.name()).thenReturn("");
+        when(additionalContext.namespaces()).thenReturn(new String[0]);
+        when(additionalContext.cleanup()).thenReturn(CleanupStrategy.AUTOMATIC);
+        when(additionalContext.namespaceLabels()).thenReturn(new String[0]);
+        when(additionalContext.namespaceAnnotations()).thenReturn(new String[0]);
 
-        return kubeContextMapping;
+        return additionalContext;
     }
 }

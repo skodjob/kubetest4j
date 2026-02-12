@@ -58,15 +58,15 @@ class ConfigurationService {
         String[] namespaces = annotation.namespaces().length == 0 ?
             new String[]{"default-test"} : annotation.namespaces();
 
-        // Convert kubeContext mappings
-        List<TestConfig.KubeContextMappingConfig> contextMappings = Arrays.stream(annotation.kubeContextMappings())
-            .map(TestConfig.KubeContextMappingConfig::fromAnnotation)
+        // Convert additional kubeContexts
+        List<TestConfig.AdditionalKubeContextConfig> additionalKubeContexts = Arrays
+            .stream(annotation.additionalKubeContexts())
+            .map(TestConfig.AdditionalKubeContextConfig::fromAnnotation)
             .collect(Collectors.toList());
 
         return new TestConfig(
             Arrays.asList(namespaces),
             annotation.cleanup(),
-            annotation.kubeContext(),
             annotation.storeYaml(),
             annotation.yamlStorePath(),
             Arrays.asList(annotation.namespaceLabels()),
@@ -79,7 +79,7 @@ class ConfigurationService {
             annotation.collectPreviousLogs(),
             Arrays.asList(annotation.collectNamespacedResources()),
             Arrays.asList(annotation.collectClusterWideResources()),
-            contextMappings
+            additionalKubeContexts
         );
     }
 

@@ -31,7 +31,6 @@ class TestConfigTest {
         TestConfig config = new TestConfig(
             List.of("test-ns"),
             CleanupStrategy.AUTOMATIC,
-            "",
             false,
             "",
             List.of(),
@@ -51,7 +50,6 @@ class TestConfigTest {
         assertNotNull(config);
         assertEquals(List.of("test-ns"), config.namespaces());
         assertEquals(CleanupStrategy.AUTOMATIC, config.cleanup());
-        assertEquals("", config.context());
         assertFalse(config.storeYaml());
         assertEquals("", config.yamlStorePath());
         assertEquals(0, config.namespaceLabels().size());
@@ -64,8 +62,8 @@ class TestConfigTest {
         assertFalse(config.collectPreviousLogs());
         assertEquals(List.of("pods"), config.collectNamespacedResources());
         assertEquals(0, config.collectClusterWideResources().size());
-        assertNotNull(config.kubeContextMappings());
-        assertEquals(0, config.kubeContextMappings().size());
+        assertNotNull(config.additionalKubeContexts());
+        assertEquals(0, config.additionalKubeContexts().size());
     }
 
     @Test
@@ -81,7 +79,6 @@ class TestConfigTest {
         TestConfig config = new TestConfig(
             namespaces,
             CleanupStrategy.MANUAL,
-            "production",
             true,
             "/opt/yamls",
             namespaceLabels,
@@ -100,7 +97,6 @@ class TestConfigTest {
         // Then
         assertEquals(namespaces, config.namespaces());
         assertEquals(CleanupStrategy.MANUAL, config.cleanup());
-        assertEquals("production", config.context());
         assertTrue(config.storeYaml());
         assertEquals("/opt/yamls", config.yamlStorePath());
         assertEquals(namespaceLabels, config.namespaceLabels());
@@ -122,7 +118,6 @@ class TestConfigTest {
         TestConfig config = new TestConfig(
             List.of(), // Empty namespaces
             CleanupStrategy.AUTOMATIC,
-            "",
             false,
             "",
             List.of(), // Empty labels
@@ -159,7 +154,6 @@ class TestConfigTest {
         TestConfig config = new TestConfig(
             List.of("test"),
             CleanupStrategy.AUTOMATIC,
-            "",
             false,
             "",
             List.of(),
@@ -187,7 +181,6 @@ class TestConfigTest {
         TestConfig config = new TestConfig(
             List.of("test"),
             CleanupStrategy.AUTOMATIC,
-            "",
             false,
             "",
             List.of(),
@@ -215,7 +208,6 @@ class TestConfigTest {
             TestConfig config = new TestConfig(
                 List.of("test"),
                 strategy,
-                "",
                 false,
                 "",
                 List.of(),
@@ -244,7 +236,6 @@ class TestConfigTest {
             TestConfig config = new TestConfig(
                 List.of("test"),
                 CleanupStrategy.AUTOMATIC,
-                "",
                 false,
                 "",
                 List.of(),
@@ -278,7 +269,6 @@ class TestConfigTest {
                     TestConfig config = new TestConfig(
                         List.of("test"),
                         CleanupStrategy.AUTOMATIC,
-                        "",
                         storeYaml,
                         "",
                         List.of(),

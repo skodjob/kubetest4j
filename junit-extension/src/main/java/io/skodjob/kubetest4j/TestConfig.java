@@ -16,7 +16,6 @@ import java.util.List;
  *
  * @param namespaces                  The Kubernetes namespaces to use for testing
  * @param cleanup                     The cleanup strategy for resources
- * @param context                     The Kubernetes cluster kubeContext to use
  * @param storeYaml                   Whether to store YAML representations of resources
  * @param yamlStorePath               Directory path to store YAML files
  * @param namespaceLabels             Labels to apply to the test namespaces
@@ -29,12 +28,11 @@ import java.util.List;
  * @param collectPreviousLogs         Whether to collect previous container logs
  * @param collectNamespacedResources  Namespaced resource types to collect
  * @param collectClusterWideResources Cluster-wide resource types to collect
- * @param kubeContextMappings         Context mappings for multi-cluster support
+ * @param additionalKubeContexts      Additional context configurations for multi-context support
  */
 public record TestConfig(
     List<String> namespaces,
     CleanupStrategy cleanup,
-    String context,
     boolean storeYaml,
     String yamlStorePath,
     List<String> namespaceLabels,
@@ -47,20 +45,20 @@ public record TestConfig(
     boolean collectPreviousLogs,
     List<String> collectNamespacedResources,
     List<String> collectClusterWideResources,
-    List<KubeContextMappingConfig> kubeContextMappings
+    List<AdditionalKubeContextConfig> additionalKubeContexts
 ) {
 
     /**
-     * Configuration for a specific Kubernetes kubeContext mapping.
+     * Configuration for an additional Kubernetes context.
      *
-     * @param kubeContext          the Kubernetes kubeContext name to use
-     * @param namespaces           list of namespace names for this kubeContext
-     * @param cleanup              cleanup strategy for this kubeContext
+     * @param name                 the Kubernetes context name to use
+     * @param namespaces           list of namespace names for this context
+     * @param cleanup              cleanup strategy for this context
      * @param namespaceLabels      labels to apply to created namespaces
      * @param namespaceAnnotations annotations to apply to created namespaces
      */
-    public record KubeContextMappingConfig(
-        String kubeContext,
+    public record AdditionalKubeContextConfig(
+        String name,
         List<String> namespaces,
         CleanupStrategy cleanup,
         List<String> namespaceLabels,
@@ -68,18 +66,18 @@ public record TestConfig(
     ) {
 
         /**
-         * Creates a KubeContextMappingConfig from a KubernetesTest.KubeContextMapping annotation.
+         * Creates an AdditionalKubeContextConfig from a KubernetesTest.AdditionalKubeContext annotation.
          *
-         * @param mapping the KubeContextMapping annotation to convert
-         * @return a new KubeContextMappingConfig instance with values from the annotation
+         * @param context the AdditionalKubeContext annotation to convert
+         * @return a new AdditionalKubeContextConfig instance with values from the annotation
          */
-        public static KubeContextMappingConfig fromAnnotation(KubernetesTest.KubeContextMapping mapping) {
-            return new KubeContextMappingConfig(
-                mapping.kubeContext(),
-                Arrays.asList(mapping.namespaces()),
-                mapping.cleanup(),
-                Arrays.asList(mapping.namespaceLabels()),
-                Arrays.asList(mapping.namespaceAnnotations())
+        public static AdditionalKubeContextConfig fromAnnotation(KubernetesTest.AdditionalKubeContext context) {
+            return new AdditionalKubeContextConfig(
+                context.name(),
+                Arrays.asList(context.namespaces()),
+                context.cleanup(),
+                Arrays.asList(context.namespaceLabels()),
+                Arrays.asList(context.namespaceAnnotations())
             );
         }
     }

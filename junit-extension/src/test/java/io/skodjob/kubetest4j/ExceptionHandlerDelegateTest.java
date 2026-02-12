@@ -321,7 +321,6 @@ class ExceptionHandlerDelegateTest {
         return new TestConfig(
             List.of("test-namespace"),
             cleanupStrategy,
-            "",
             false,
             "",
             List.of(),

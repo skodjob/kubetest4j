@@ -33,6 +33,15 @@ descriptions of resources specified by users, collected from the desired Namespa
 To Log Collector's [README](log-collector/README.md) contains detailed documentation about this component,
 together with the usage and installation.
 
+### JUnit Extension
+The `junit-extension` module combines all the provided functionality of kubetest4j into a single, easy-to-use JUnit extension. This extension provides a **declarative approach** to Kubernetes testing with best-practice configurations out of the box.
+
+**Choose your approach:**
+- **Raw kubetest4j modules** - For maximum configurability and fine-grained control over testing behavior. Use individual modules (`kubetest4j`, `log-collector`, `metrics-collector`, etc.) with manual setup and custom annotations.
+- **KubernetesTest extension** - For simple, opinionated testing with best practices pre-configured. Use the `@KubernetesTest` annotation for comprehensive test setup with minimal configuration.
+
+See the [junit-extension README](junit-extension/README.md) for detailed documentation and examples.
+
 ### Utils
 `kubetest4j` contains also tweaks and [utils](kubetest4j/src/main/java/io/skodjob/kubetest4j/utils) for better working with kubernetes cluster.
 

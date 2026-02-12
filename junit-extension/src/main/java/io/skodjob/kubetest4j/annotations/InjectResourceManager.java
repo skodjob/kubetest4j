@@ -40,5 +40,5 @@ public @interface InjectResourceManager {
      *
      * @return cluster kubeContext name
      */
-    String context() default "";
+    String kubeContext() default "";
 }

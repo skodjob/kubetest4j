@@ -70,21 +70,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
     namespaceLabels = {"test-suite=multi-kube-context", "environment=local"},
     namespaceAnnotations = {"test.io/suite=multi-kube-context"},
 
-    // Mock multi-kube-context configuration - all kubeContexts use same cluster via env vars
-    kubeContextMappings = {
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "staging",
+    // Additional kube contexts for multi-context testing - all contexts use same cluster via env vars
+    additionalKubeContexts = {
+        @KubernetesTest.AdditionalKubeContext(
+            name = "staging",
             namespaces = {"stg-frontend", "stg-backend"},
             namespaceLabels = {"environment=staging", "tier=application"},
             namespaceAnnotations = {"deployment.io/stage=staging"},
             cleanup = CleanupStrategy.AUTOMATIC),
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "production",
+        @KubernetesTest.AdditionalKubeContext(
+            name = "production",
             namespaces = {"prod-api", "prod-cache"},
             namespaceLabels = {"environment=production"},
             cleanup = CleanupStrategy.AUTOMATIC),
-        @KubernetesTest.KubeContextMapping(
-            kubeContext = "development",
+        @KubernetesTest.AdditionalKubeContext(
+            name = "development",
             namespaces = {"dev-experimental"},
             namespaceLabels = {"team=platform", "purpose=testing"},
             cleanup = CleanupStrategy.AUTOMATIC)
@@ -105,16 +105,16 @@ class MultiContextIT {
     KubeCmdClient<?> defaultCmdClient;
 
     // KubeContext-specific field injections (all point to same cluster via env vars)
-    @InjectKubeClient(context = "staging")
+    @InjectKubeClient(kubeContext = "staging")
     KubeClient stagingClient;
 
-    @InjectResourceManager(context = "staging")
+    @InjectResourceManager(kubeContext = "staging")
     KubeResourceManager stagingResourceManager;
 
-    @InjectKubeClient(context = "production")
+    @InjectKubeClient(kubeContext = "production")
     KubeClient productionClient;
 
-    @InjectKubeClient(context = "development")
+    @InjectKubeClient(kubeContext = "development")
     KubeClient devClient;
 
     // Namespace injections - default kubeContext
@@ -125,13 +125,13 @@ class MultiContextIT {
     Namespace localTestNamespace;
 
     // Namespace injections - mock kubeContexts (same cluster, different namespaces)
-    @InjectNamespaces(context = "staging")
+    @InjectNamespaces(kubeContext = "staging")
     Map<String, Namespace> stagingNamespaces;
 
-    @InjectNamespace(context = "staging", name = "stg-frontend")
+    @InjectNamespace(kubeContext = "staging", name = "stg-frontend")
     Namespace stagingFrontendNamespace;
 
-    @InjectNamespace(context = "production", name = "prod-api")
+    @InjectNamespace(kubeContext = "production", name = "prod-api")
     Namespace productionApiNamespace;
 
     @Test
@@ -180,10 +180,10 @@ class MultiContextIT {
 
     @Test
     void testParameterInjection(
-        @InjectKubeClient(context = "staging") KubeClient stgClient,
-        @InjectResourceManager(context = "development") KubeResourceManager devManager,
-        @InjectNamespace(context = "staging", name = "stg-backend") Namespace stgBackendNs,
-        @InjectNamespaces(context = "development") Map<String, Namespace> devNamespaces
+        @InjectKubeClient(kubeContext = "staging") KubeClient stgClient,
+        @InjectResourceManager(kubeContext = "development") KubeResourceManager devManager,
+        @InjectNamespace(kubeContext = "staging", name = "stg-backend") Namespace stgBackendNs,
+        @InjectNamespaces(kubeContext = "development") Map<String, Namespace> devNamespaces
     ) {
         LOGGER.info("=== Testing Parameter Injection ===");
 
@@ -264,7 +264,7 @@ class MultiContextIT {
 
     @Test
     void testResourceInjectionWithKubeContext(
-        @InjectResource(context = "staging", value = "src/test/resources/test-deployment.yaml")
+        @InjectResource(kubeContext = "staging", value = "src/test/resources/test-deployment.yaml")
         Deployment injectedDeployment
     ) {
         LOGGER.info("=== Testing Resource Injection with KubeContext ===");

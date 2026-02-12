@@ -39,5 +39,5 @@ public @interface InjectKubeClient {
      *
      * @return cluster kubeContext name
      */
-    String context() default "";
+    String kubeContext() default "";
 }

@@ -181,7 +181,6 @@ class ContextStoreHelperTest {
             TestConfig testConfig = new TestConfig(
                 List.of("test-ns"),
                 CleanupStrategy.AUTOMATIC,
-                "",
                 false,
                 "",
                 List.of(),

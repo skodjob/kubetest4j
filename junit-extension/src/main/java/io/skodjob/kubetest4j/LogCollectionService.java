@@ -64,6 +64,15 @@ class LogCollectionService {
 
         String logPath = getLogPath(context, testConfig, KubeTestConstants.DEFAULT_CONTEXT_NAME);
 
+        LogCollectorBuilder builder = createLogBuilder(testConfig, resourceManager, logPath);
+
+        LogCollector logCollector = builder.build();
+        contextStoreHelper.putLogCollector(context, logCollector);
+
+        LOGGER.info("Log collector configured to collect to: {}", logPath);
+    }
+
+    private LogCollectorBuilder createLogBuilder(TestConfig testConfig, KubeResourceManager resourceManager, String logPath) {
         LogCollectorBuilder builder = new LogCollectorBuilder()
             .withRootFolderPath(logPath)
             .withKubeClient(resourceManager.kubeClient())
@@ -78,10 +87,7 @@ class LogCollectionService {
             builder.withCollectPreviousLogs();
         }
 
-        LogCollector logCollector = builder.build();
-        contextStoreHelper.putLogCollector(context, logCollector);
-
-        LOGGER.info("Log collector configured to collect to: {}", logPath);
+        return builder;
     }
 
     // ===============================
@@ -152,9 +158,9 @@ class LogCollectionService {
 
             // Find test namespaces for this kubeContext
             Set<String> contextTestNamespaces = new HashSet<>();
-            for (TestConfig.KubeContextMappingConfig contextMapping : testConfig.kubeContextMappings()) {
-                if (contextName.equals(contextMapping.kubeContext())) {
-                    contextTestNamespaces.addAll(contextMapping.namespaces());
+            for (TestConfig.AdditionalKubeContextConfig additionalContext : testConfig.additionalKubeContexts()) {
+                if (contextName.equals(additionalContext.name())) {
+                    contextTestNamespaces.addAll(additionalContext.namespaces());
                 }
             }
 
@@ -187,21 +193,7 @@ class LogCollectionService {
 
         LOGGER.debug("Creating LogCollector for kubeContext '{}' with path: {}", contextName, logPath);
 
-        LogCollectorBuilder builder = new LogCollectorBuilder()
-            .withRootFolderPath(logPath)
-            .withKubeClient(contextManager.kubeClient())  // Use kubeContext-specific KubeClient
-            .withKubeCmdClient(contextManager.kubeCmdClient())  // Use kubeContext-specific KubeCmdClient
-            .withNamespacedResources(testConfig.collectNamespacedResources().toArray(new String[0]));
-
-        if (!testConfig.collectClusterWideResources().isEmpty()) {
-            builder.withClusterWideResources(testConfig.collectClusterWideResources().toArray(new String[0]));
-        }
-
-        if (testConfig.collectPreviousLogs()) {
-            builder.withCollectPreviousLogs();
-        }
-
-        return builder.build();
+        return createLogBuilder(testConfig, contextManager, logPath).build();
     }
 
     /**
