@@ -10,4 +10,9 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: kentaro-m/auto-assign-action@v2.0.1
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
+        with:
+          egress-policy: audit
+
+      - uses: kentaro-m/auto-assign-action@a6d59add3a817df08cafa9b166367768d2c337f8 # v2.0.1
