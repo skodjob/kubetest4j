@@ -7,7 +7,7 @@
     <parent>
         <artifactId>kubetest4j-parent</artifactId>
         <groupId>io.skodjob.kubetest4j</groupId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>junit-extension</artifactId>
