@@ -86,7 +86,7 @@
         <maven.javadoc.version>3.12.0</maven.javadoc.version>
         <maven.assembly.version>3.8.0</maven.assembly.version>
         <maven.plugin.plugin.version>3.9.0</maven.plugin.plugin.version>
-        <junit.jupiter.version>6.0.2</junit.jupiter.version>
+        <junit.jupiter.version>6.0.3</junit.jupiter.version>
         <maven.surefire.version>3.5.4</maven.surefire.version>
         <jackson-dataformat-yaml.version>2.21.0</jackson-dataformat-yaml.version>
         <org.eclipse.sisu.version>1.0.0</org.eclipse.sisu.version>
