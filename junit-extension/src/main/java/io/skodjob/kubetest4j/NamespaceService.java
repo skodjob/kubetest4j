@@ -67,7 +67,7 @@ class NamespaceService {
         Map<String, Namespace> namespaceObjects = new HashMap<>();
         List<String> createdNamespaces = new ArrayList<>();
 
-        LOGGER.info("Setting up test namespaces: {}", String.join(", ", namespaceNames));
+        LOGGER.info("Setting up namespaces: {}", String.join(", ", namespaceNames));
 
         // Set up primary kubeContext namespaces
         for (String namespaceName : namespaceNames) {
@@ -81,7 +81,7 @@ class NamespaceService {
         // Set up additional kubeContext namespaces
         for (TestConfig.AdditionalKubeContextConfig additionalContext : testConfig.additionalKubeContexts()) {
             String clusterContext = additionalContext.name();
-            LOGGER.info("Setting up namespaces for kubeContext '{}': {}", clusterContext,
+            LOGGER.info("Setting up namespaces for kubeContext {}: {}", clusterContext,
                 String.join(", ", additionalContext.namespaces()));
 
             // Get or create ResourceManager for this kubeContext
@@ -110,7 +110,7 @@ class NamespaceService {
             contextStoreHelper.putCreatedNamespaceNames(context, createdNamespaces);
             LOGGER.info("Created namespaces: {}", String.join(", ", createdNamespaces));
         } else {
-            LOGGER.info("No new namespaces were created - all namespaces already existed");
+            LOGGER.info("No namespaces created - all already exist");
         }
 
         // Store namespace objects for injection
@@ -130,7 +130,7 @@ class NamespaceService {
             return;
         }
 
-        LOGGER.info("Setting up automatic namespace labeling for log collection");
+        LOGGER.info("Setting up namespace auto-labeling for log collection");
 
         resourceManager.addCreateCallback(resource -> {
             LOGGER.debug("Resource create callback triggered for: {} - {}",
@@ -149,7 +149,7 @@ class NamespaceService {
 
                 try {
                     KubeUtils.labelNamespace(namespaceName, LOG_COLLECTION_LABEL_KEY, LOG_COLLECTION_LABEL_VALUE);
-                    LOGGER.info("Successfully labeled namespace '{}' with {}={}",
+                    LOGGER.info("Labeled namespace '{}' with {}={}",
                         namespaceName, LOG_COLLECTION_LABEL_KEY, LOG_COLLECTION_LABEL_VALUE);
                 } catch (Exception e) {
                     LOGGER.error("Failed to label namespace '{}' for log collection: {}",
@@ -171,7 +171,7 @@ class NamespaceService {
     public static void resetAutoLabelingConfiguration() {
         autoLabelingConfigured = false;
         LABELED_NAMESPACES.clear();
-        LOGGER.debug("Reset auto-labeling configuration and cleared labeled namespaces");
+        LOGGER.debug("Cleared namespace auto-labeling configuration");
     }
 
     /**
@@ -182,11 +182,11 @@ class NamespaceService {
         List<String> createdNamespaces = contextStoreHelper.getCreatedNamespaceNames(context);
 
         if (createdNamespaces == null || createdNamespaces.isEmpty()) {
-            LOGGER.info("No namespaces to delete - all namespaces were existing before the test");
+            LOGGER.info("No namespaces to delete - all existed before the test");
             return;
         }
 
-        LOGGER.info("Deleting only test-created namespaces: {}", String.join(", ", createdNamespaces));
+        LOGGER.info("Deleting test-created namespaces: {}", String.join(", ", createdNamespaces));
 
         try {
             KubeResourceManager resourceManager = contextStoreHelper.getResourceManager(context);
@@ -199,7 +199,7 @@ class NamespaceService {
                 LoggerUtils.logResource("Deleting", Level.DEBUG, namespace);
                 resourceManager.deleteResourceWithWait(namespace);
             }
-            LOGGER.info("Successfully deleted {} test-created namespaces", createdNamespaces.size());
+            LOGGER.info("Deleted {} test-created namespaces", createdNamespaces.size());
         } catch (Exception e) {
             LOGGER.warn("Failed to delete test-created namespaces: {}", String.join(", ", createdNamespaces), e);
         }
@@ -213,14 +213,14 @@ class NamespaceService {
     private void performNamespaceSetup(NamespaceSetupContext setupContext) {
         String contextLabel = setupContext.clusterContext().isEmpty() ?
             KubeTestConstants.DEFAULT_CONTEXT_NAME : setupContext.clusterContext();
-        LOGGER.debug("Setting up namespace '{}' in kubeContext '{}'", setupContext.namespaceName(), contextLabel);
+        LOGGER.debug("Setting up namespace {} in kubeContext {}", setupContext.namespaceName(), contextLabel);
 
         // Check if namespace already exists
         Namespace existingNamespace = setupContext.resourceManager().kubeClient().getClient().namespaces()
             .withName(setupContext.namespaceName()).get();
 
         if (existingNamespace != null) {
-            LOGGER.info("Using existing namespace '{}' in kubeContext '{}'",
+            LOGGER.info("Using existing namespace {} in kubeContext {}",
                 setupContext.namespaceName(), contextLabel);
 
             // Do not modify existing namespaces - respect namespace protection principle

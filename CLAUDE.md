@@ -97,6 +97,28 @@ IP_FAMILY=ipv4|ipv6|dual                         # IP family (default: ipv4)
 - **Logging:** SLF4J with Log4J2 backend
 - **Dependencies:** Fabric8 Kubernetes Client 7.x, JUnit Jupiter 6.x
 
+### Logging Conventions
+All classes use SLF4J with this declaration:
+```java
+private static final Logger LOGGER = LoggerFactory.getLogger(MyClass.class);
+```
+
+**Use `LoggerUtils` (not direct LOGGER calls) for:**
+- Resource operations (create/delete/update): `LoggerUtils.logResource("Creating", resource)` or `LoggerUtils.logResource("Deleting", Level.DEBUG, resource)`
+- Visual test separators: `LoggerUtils.logSeparator()` or `LoggerUtils.logSeparator("=", 80)`
+
+**Use direct `LOGGER` calls for everything else:**
+- `LOGGER.info(...)` - lifecycle events (test started/finished), setup/cleanup, major milestones
+- `LOGGER.debug(...)` - configuration details, skipped operations, internal state
+- `LOGGER.warn(...)` - non-fatal failures, missing optional components, cleanup issues
+- `LOGGER.error(...)` - test failures, critical operation failures (include exception: `LOGGER.error("msg", e)`)
+
+**Do NOT:**
+- Use `System.out.println` or `System.err.println` - always use SLF4J Logger
+- Use TRACE level in junit-extension (reserved for core module internals)
+- Write custom resource log formatting - use `LoggerUtils.logResource()` instead
+- Hardcode separator strings - use `LoggerUtils.logSeparator()`
+
 ### Required File Header (Checkstyle enforced)
 Every `.java` file MUST start with this exact header:
 ```java
