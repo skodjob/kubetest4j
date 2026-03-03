@@ -65,7 +65,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.release>21</maven.compiler.release>
 
-        <fabric8.version>7.5.2</fabric8.version>
+        <fabric8.version>7.6.0</fabric8.version>
         <log4j.version>2.25.3</log4j.version>
         <slf4j.version>2.0.17</slf4j.version>
 
