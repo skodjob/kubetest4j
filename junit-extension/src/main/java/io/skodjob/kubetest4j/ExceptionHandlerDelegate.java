@@ -48,7 +48,7 @@ class ExceptionHandlerDelegate {
      */
     public void handleTestExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
-        LOGGER.error("Test failed during execution: {}", context.getDisplayName(), throwable);
+        LOGGER.error("Test '{}' failed during execution", context.getDisplayName(), throwable);
         handleTestFailure(context, "test-execution");
         throw throwable;
     }
@@ -58,7 +58,7 @@ class ExceptionHandlerDelegate {
      */
     public void handleBeforeAllMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
-        LOGGER.error("Test failed during beforeAll: {}", context.getDisplayName(), throwable);
+        LOGGER.error("Test '{}' failed during beforeAll", context.getDisplayName(), throwable);
         handleTestFailure(context, "before-all");
         throw throwable;
     }
@@ -68,7 +68,7 @@ class ExceptionHandlerDelegate {
      */
     public void handleBeforeEachMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
-        LOGGER.error("Test failed during beforeEach: {}", context.getDisplayName(), throwable);
+        LOGGER.error("Test '{}' failed during beforeEach", context.getDisplayName(), throwable);
         handleTestFailure(context, "before-each");
         throw throwable;
     }
@@ -78,7 +78,7 @@ class ExceptionHandlerDelegate {
      */
     public void handleAfterEachMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
-        LOGGER.error("Test failed during afterEach: {}", context.getDisplayName(), throwable);
+        LOGGER.error("Test '{}' failed during afterEach", context.getDisplayName(), throwable);
         handleTestFailure(context, "after-each");
         throw throwable;
     }
@@ -88,7 +88,7 @@ class ExceptionHandlerDelegate {
      */
     public void handleAfterAllMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
-        LOGGER.error("Test failed during afterAll: {}", context.getDisplayName(), throwable);
+        LOGGER.error("Test '{}' failed during afterAll", context.getDisplayName(), throwable);
         handleTestFailure(context, "after-all");
         throw throwable;
     }

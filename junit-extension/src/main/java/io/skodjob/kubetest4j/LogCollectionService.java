@@ -60,8 +60,6 @@ class LogCollectionService {
      */
     public void setupLogCollector(ExtensionContext context, TestConfig testConfig,
                                   KubeResourceManager resourceManager) {
-        LOGGER.info("Setting up log collector with strategy: {}", testConfig.logCollectionStrategy());
-
         String logPath = getLogPath(context, testConfig, KubeTestConstants.DEFAULT_CONTEXT_NAME);
 
         LogCollectorBuilder builder = createLogBuilder(testConfig, resourceManager, logPath);
@@ -69,7 +67,8 @@ class LogCollectionService {
         LogCollector logCollector = builder.build();
         contextStoreHelper.putLogCollector(context, logCollector);
 
-        LOGGER.info("Log collector configured to collect to: {}", logPath);
+        LOGGER.info("Setting up log collector with strategy '{}', path: {}",
+            testConfig.logCollectionStrategy(), logPath);
     }
 
     private LogCollectorBuilder createLogBuilder(TestConfig testConfig,
@@ -103,12 +102,12 @@ class LogCollectionService {
         LogCollector logCollector = getLogCollector(context);
 
         if (logCollector == null) {
-            LOGGER.warn("Log collector not available, skipping log collection");
+            LOGGER.warn("Skipping log collection - log collector not available");
             return;
         }
 
         try {
-            LOGGER.info("Collecting logs for test execution: {}", suffix);
+            LOGGER.info("Collecting logs: {}", suffix);
 
             // Create label selector to find namespaces with log collection enabled
             LabelSelector logCollectionSelector = new LabelSelectorBuilder()
@@ -121,7 +120,7 @@ class LogCollectionService {
             // Collect logs from all contexts (primary + kubeContext mappings)
             collectLogsFromAllContexts(context, testConfig, logCollectionSelector, logCollector);
 
-            LOGGER.info("Log collection completed successfully");
+            LOGGER.info("Log collection completed");
         } catch (Exception e) {
             LOGGER.error("Failed to collect logs", e);
         }
@@ -142,7 +141,7 @@ class LogCollectionService {
         primaryContextTestNamespaces.addAll(primaryContextNamespaces);
 
         if (!primaryContextTestNamespaces.isEmpty()) {
-            LOGGER.info("Collecting logs from primary kubeContext namespaces: {}", primaryContextTestNamespaces);
+            LOGGER.info("Collecting logs from primary kubeContext, namespaces: {}", primaryContextTestNamespaces);
             primaryLogCollector.collectFromNamespaces(primaryContextTestNamespaces.toArray(new String[0]));
             primaryLogCollector.collectClusterWideResources();
         }
@@ -169,7 +168,8 @@ class LogCollectionService {
             contextTestNamespaces.addAll(contextLabeledNamespaces);
 
             if (!contextTestNamespaces.isEmpty()) {
-                LOGGER.info("Collecting logs from kubeContext '{}' namespaces: {}", contextName, contextTestNamespaces);
+                LOGGER.info("Collecting logs from kubeContext {}, namespaces: {}",
+                    contextName, contextTestNamespaces);
 
                 // Create kubeContext-specific LogCollector with proper KubeClient
                 LogCollector contextLogCollector =
@@ -179,7 +179,7 @@ class LogCollectionService {
             }
         }
 
-        LOGGER.info("Multi-kubeContext log collection completed successfully");
+        LOGGER.debug("Multi-kubeContext log collection completed");
     }
 
     /**
@@ -192,7 +192,7 @@ class LogCollectionService {
                                                       String contextName) {
         String logPath = getLogPath(context, testConfig, contextName);
 
-        LOGGER.debug("Creating LogCollector for kubeContext '{}' with path: {}", contextName, logPath);
+        LOGGER.debug("Creating log collector for kubeContext {}, path: {}", contextName, logPath);
 
         return createLogBuilder(testConfig, contextManager, logPath).build();
     }
@@ -212,12 +212,13 @@ class LogCollectionService {
                 .map(ns -> ns.getMetadata().getName())
                 .toList();
 
-            LOGGER.debug("Found {} namespaces with log collection label in kubeContext '{}': {}",
+            LOGGER.debug("Found {} labeled namespaces in kubeContext {}: {}",
                 labeledNamespaces.size(), contextName, labeledNamespaces);
 
             return labeledNamespaces;
         } catch (Exception e) {
-            LOGGER.warn("Failed to query namespaces in kubeContext '{}': {}", contextName, e.getMessage());
+            LOGGER.warn("Failed to query labeled namespaces in kubeContext {}: {}",
+                contextName, e.getMessage());
             return Collections.emptyList();
         }
     }
