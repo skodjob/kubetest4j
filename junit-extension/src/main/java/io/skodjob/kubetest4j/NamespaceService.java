@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Manages namespace lifecycle operations for Kubernetes tests.
@@ -35,7 +36,7 @@ class NamespaceService {
     private static final String LOG_COLLECTION_LABEL_VALUE = "enabled";
 
     // Track whether auto-labeling has been configured for the singleton ResourceManager
-    private static boolean autoLabelingConfigured = false;
+    private static final AtomicBoolean AUTO_LABELING_CONFIGURED = new AtomicBoolean(false);
 
     // Track namespaces that have already been labeled to prevent duplicates
     private static final Set<String> LABELED_NAMESPACES = ConcurrentHashMap.newKeySet();
@@ -121,11 +122,12 @@ class NamespaceService {
 
     /**
      * Sets up automatic namespace labeling for log collection.
-     * This method ensures that the callback is only registered once for the singleton ResourceManager.
+     * This method ensures that the callbacks are only registered once for the singleton ResourceManager.
+     * Uses {@link AtomicBoolean#compareAndSet} to guarantee only one thread registers the callbacks,
+     * making this safe for parallel test execution.
      */
     public void setupNamespaceAutoLabeling(KubeResourceManager resourceManager) {
-        // Check if auto-labeling has already been configured
-        if (autoLabelingConfigured) {
+        if (!AUTO_LABELING_CONFIGURED.compareAndSet(false, true)) {
             LOGGER.debug("Auto-labeling already configured, skipping setup");
             return;
         }
@@ -160,18 +162,15 @@ class NamespaceService {
             }
         });
 
-        // Mark auto-labeling as configured
-        autoLabelingConfigured = true;
-    }
-
-    /**
-     * Resets the auto-labeling configuration.
-     * This should be called when cleaning up to allow fresh configuration in subsequent tests.
-     */
-    public static void resetAutoLabelingConfiguration() {
-        autoLabelingConfigured = false;
-        LABELED_NAMESPACES.clear();
-        LOGGER.debug("Cleared namespace auto-labeling configuration");
+        // Register delete callback to remove namespaces from the tracking deleted
+        resourceManager.addDeleteCallback(resource -> {
+            if ("Namespace".equals(resource.getKind())) {
+                String namespaceName = resource.getMetadata().getName();
+                if (LABELED_NAMESPACES.remove(namespaceName)) {
+                    LOGGER.debug("Removed namespace '{}' from auto-labeling tracking", namespaceName);
+                }
+            }
+        });
     }
 
     /**

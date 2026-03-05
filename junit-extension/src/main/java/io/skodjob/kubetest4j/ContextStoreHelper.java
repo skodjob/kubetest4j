@@ -8,9 +8,9 @@ import io.fabric8.kubernetes.api.model.Namespace;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Helper class that centralizes all ExtensionContext.Store access patterns.
@@ -174,15 +174,13 @@ class ContextStoreHelper {
 
     /**
      * Get or create a map from the kubeContext store with automatic initialization.
+     * Uses {@link ExtensionContext.Store#getOrComputeIfAbsent} for atomic creation and
+     * {@link ConcurrentHashMap} for thread-safe concurrent access.
      */
     @SuppressWarnings("unchecked")
     private <T> Map<String, T> getOrCreateMap(ExtensionContext context, String key) {
-        Map<String, T> map = (Map<String, T>) context.getStore(ExtensionContext.Namespace.GLOBAL).get(key);
-        if (map == null) {
-            map = new HashMap<>();
-            put(context, key, map);
-        }
-        return map;
+        return (Map<String, T>) context.getStore(ExtensionContext.Namespace.GLOBAL)
+            .computeIfAbsent(key, k -> new ConcurrentHashMap<>(), Map.class);
     }
 
     /**
@@ -251,7 +249,7 @@ class ContextStoreHelper {
     public Map<String, Namespace> getOrCreateNamespaceObjectsForContext(ExtensionContext context,
                                                                         String clusterContext) {
         Map<String, Map<String, Namespace>> contextNamespaces = getOrCreateContextNamespaceObjects(context);
-        return contextNamespaces.computeIfAbsent(clusterContext, k -> new HashMap<>());
+        return contextNamespaces.computeIfAbsent(clusterContext, k -> new ConcurrentHashMap<>());
     }
 
     public List<String> getOrCreateCreatedNamespacesForContext(ExtensionContext context, String clusterContext) {
