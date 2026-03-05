@@ -19,9 +19,10 @@ import org.junit.jupiter.api.extension.ExtensionContext.Store;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -234,46 +234,54 @@ class ContextStoreHelperTest {
 
         @Test
         @DisplayName("Should put and get kubeContext managers")
+        @SuppressWarnings("unchecked")
         void shouldPutAndGetContextManagers() {
-            // Given
-            when(store.get("kubernetes.test.contextManagers")).thenReturn(new HashMap<>());
+            // Given - mock getOrComputeIfAbsent to invoke the factory function
+            ConcurrentHashMap<String, KubeResourceManager> map = new ConcurrentHashMap<>();
+            when(store.computeIfAbsent(eq("kubernetes.test.contextManagers"), any(Function.class), eq(Map.class)))
+                .thenReturn(map);
 
             // When
             storeHelper.putContextManager(extensionContext, "staging", resourceManager);
             Map<String, KubeResourceManager> result = storeHelper.getContextManagers(extensionContext);
 
             // Then
-            verify(store, atLeastOnce()).get("kubernetes.test.contextManagers");
-            assertTrue(result.isEmpty() || result.containsKey("staging"));
+            assertTrue(result.containsKey("staging"));
+            assertEquals(resourceManager, result.get("staging"));
         }
 
         @Test
         @DisplayName("Should put and get kubeContext closers")
+        @SuppressWarnings("unchecked")
         void shouldPutAndGetContextClosers() {
             // Given
             AutoCloseable mockCloser = mock(AutoCloseable.class);
-            when(store.get("kubernetes.test.contextClosers")).thenReturn(new HashMap<>());
+            ConcurrentHashMap<String, AutoCloseable> map = new ConcurrentHashMap<>();
+            when(store.computeIfAbsent(eq("kubernetes.test.contextClosers"), any(Function.class), eq(Map.class)))
+                .thenReturn(map);
 
             // When
             storeHelper.putContextCloser(extensionContext, "staging", mockCloser);
             Map<String, AutoCloseable> result = storeHelper.getAllContextClosers(extensionContext);
 
             // Then
-            verify(store, atLeastOnce()).get("kubernetes.test.contextClosers");
-            assertTrue(result.isEmpty() || result.containsKey("staging"));
+            assertTrue(result.containsKey("staging"));
+            assertEquals(mockCloser, result.get("staging"));
         }
 
         @Test
         @DisplayName("Should put and get kubeContext namespace objects for specific kubeContext")
+        @SuppressWarnings("unchecked")
         void shouldPutAndGetContextNamespaceObjectsForSpecificContext() {
             // Given
             String contextName = "staging";
             Namespace namespace = new NamespaceBuilder().withNewMetadata().withName("stg-ns").endMetadata().build();
             Map<String, Namespace> namespaceObjects = Map.of("stg-ns", namespace);
 
-            Map<String, Map<String, Namespace>> allContextObjects = new HashMap<>();
+            ConcurrentHashMap<String, Map<String, Namespace>> allContextObjects = new ConcurrentHashMap<>();
             allContextObjects.put(contextName, namespaceObjects);
-            when(store.get("kubernetes.test.contextNamespaceObjects"))
+            when(store.computeIfAbsent(
+                eq("kubernetes.test.contextNamespaceObjects"), any(Function.class), eq(Map.class)))
                 .thenReturn(allContextObjects);
 
             // When
@@ -282,35 +290,39 @@ class ContextStoreHelperTest {
                 extensionContext, contextName);
 
             // Then
-            verify(store, atLeastOnce()).get("kubernetes.test.contextNamespaceObjects");
             assertEquals(namespaceObjects, result);
         }
 
         @Test
         @DisplayName("Should get or create kubeContext created namespaces for specific kubeContext")
+        @SuppressWarnings("unchecked")
         void shouldGetOrCreateContextCreatedNamespacesForSpecificContext() {
             // Given
             String contextName = "staging";
-            when(store.get("kubernetes.test.contextCreatedNamespaces"))
-                .thenReturn(new HashMap<>());
+            ConcurrentHashMap<String, List<String>> map = new ConcurrentHashMap<>();
+            when(store.computeIfAbsent(
+                eq("kubernetes.test.contextCreatedNamespaces"), any(Function.class), eq(Map.class)))
+                .thenReturn(map);
 
             // When
             List<String> result = storeHelper.getOrCreateCreatedNamespacesForContext(
                 extensionContext, contextName);
 
             // Then
-            verify(store, atLeastOnce()).get("kubernetes.test.contextCreatedNamespaces");
             assertNotNull(result);
             assertTrue(result.isEmpty());
         }
 
         @Test
         @DisplayName("Should initialize empty map when kubeContext namespace objects not found")
+        @SuppressWarnings("unchecked")
         void shouldInitializeEmptyMapWhenContextNamespaceObjectsNotFound() {
             // Given
             String contextName = "new-kubeContext";
-            when(store.get("kubernetes.test.contextNamespaceObjects"))
-                .thenReturn(null);
+            ConcurrentHashMap<String, Map<String, Namespace>> map = new ConcurrentHashMap<>();
+            when(store.computeIfAbsent(
+                eq("kubernetes.test.contextNamespaceObjects"), any(Function.class), eq(Map.class)))
+                .thenReturn(map);
 
             // When
             Map<String, Namespace> result = storeHelper.getOrCreateNamespaceObjectsForContext(
@@ -319,23 +331,26 @@ class ContextStoreHelperTest {
             // Then
             assertNotNull(result);
             assertTrue(result.isEmpty());
-            verify(store).put(eq("kubernetes.test.contextNamespaceObjects"), any(Map.class));
         }
 
         @Test
         @DisplayName("Should initialize empty map when kubeContext created namespaces not found")
+        @SuppressWarnings("unchecked")
         void shouldInitializeEmptyMapWhenContextCreatedNamespacesNotFound() {
             // Given
             String contextName = "new-kubeContext";
-            when(store.get("kubernetes.test.contextCreatedNamespaces")).thenReturn(null);
+            ConcurrentHashMap<String, List<String>> map = new ConcurrentHashMap<>();
+            when(store.computeIfAbsent(
+                eq("kubernetes.test.contextCreatedNamespaces"), any(Function.class), eq(Map.class)))
+                .thenReturn(map);
 
             // When
-            List<String> result = storeHelper.getOrCreateCreatedNamespacesForContext(extensionContext, contextName);
+            List<String> result = storeHelper.getOrCreateCreatedNamespacesForContext(
+                extensionContext, contextName);
 
             // Then
             assertNotNull(result);
             assertTrue(result.isEmpty());
-            verify(store).put(eq("kubernetes.test.contextCreatedNamespaces"), any(Map.class));
         }
     }
 
