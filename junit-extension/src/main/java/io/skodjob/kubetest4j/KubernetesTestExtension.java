@@ -170,9 +170,6 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         // Clean up ThreadLocal variables to prevent thread reuse issues
         cleanupThreadLocalVariables(context);
 
-        // Reset auto-labeling configuration for subsequent tests
-        NamespaceService.resetAutoLabelingConfiguration();
-
         LOGGER.info("TestClass {} FINISHED", context.getRequiredTestClass().getName());
         logVisualSeparator(context);
     }

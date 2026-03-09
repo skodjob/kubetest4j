@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -415,6 +416,27 @@ public final class KubeResourceManager {
             .ifPresent(stack -> stack.forEach(i ->
                 Optional.ofNullable(i.resource()).ifPresent(r ->
                     LoggerUtils.logResource("Managed resource:", logLevel, r))));
+    }
+
+    /**
+     * Returns a list of all resources currently tracked for the active test context.
+     *
+     * @return list of tracked resources for the current test
+     */
+    public List<HasMetadata> getCurrentResources() {
+        String test = getTestContext().getDisplayName();
+        return Optional.ofNullable(STORED_RESOURCES.get(this.contextId))
+            .map(m -> m.get(test))
+            .map(stack -> {
+                List<HasMetadata> resources = new ArrayList<>();
+                for (ResourceItem<?> item : stack) {
+                    if (item.resource() != null) {
+                        resources.add(item.resource());
+                    }
+                }
+                return Collections.unmodifiableList(resources);
+            })
+            .orElse(Collections.emptyList());
     }
 
     /* ──────────────────  CREATE / UPDATE / DELETE IMPLEMENTATION  ─────────── */
