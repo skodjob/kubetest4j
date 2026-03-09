@@ -84,8 +84,10 @@ class KubeResourceManagerTest {
             new NamespaceBuilder().withNewMetadata().withName("test2").endMetadata().build());
         assertNull(KubeResourceManager.get().kubeClient().getClient().namespaces().withName("test").get());
         assertNotNull(KubeResourceManager.get().kubeClient().getClient().namespaces().withName("test2").get());
+        assertEquals(1, KubeResourceManager.get().getCurrentResources().size());
         KubeResourceManager.get().deleteResources();
         assertNull(KubeResourceManager.get().kubeClient().getClient().namespaces().withName("test2").get());
+        assertEquals(0, KubeResourceManager.get().getCurrentResources().size());
     }
 
     @Test
