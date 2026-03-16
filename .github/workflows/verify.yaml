@@ -44,7 +44,7 @@ jobs:
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
 
       - name: Verify and sonar scan
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false)
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]')
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
@@ -53,5 +53,5 @@ jobs:
             -Dsonar.projectKey=$SONAR_PROJECT_KEY
 
       - name: Verify
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        if: github.event_name == 'pull_request' && (github.event.pull_request.head.repo.fork == true || github.actor == 'dependabot[bot]')
         run: ./mvnw verify -P integration -Dstyle.color=always
