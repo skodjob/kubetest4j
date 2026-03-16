@@ -70,7 +70,7 @@
         <slf4j.version>2.0.17</slf4j.version>
 
         <!--  TEST dependencies  -->
-        <mockito.version>5.22.0</mockito.version>
+        <mockito.version>5.23.0</mockito.version>
         <apache.commons.version>2.21.0</apache.commons.version>
 
         <!--   Build tools' properties     -->
