@@ -1,0 +1,15 @@
+# Default owners for everything in the repo
+* @kornys @Frawless @im-konge
+
+# Module-specific ownership
+/kubetest4j/ @kornys @Frawless
+/kubernetes-resources/ @kornys @Frawless
+/openshift-resources/ @kornys @Frawless
+/junit-extension/ @kornys @im-konge
+/log-collector/ @kornys @im-konge
+/metrics-collector/ @kornys @im-konge
+/test-examples/ @kornys @Frawless @im-konge
+
+# CI and build
+/.github/ @kornys @Frawless
+/pom.xml @kornys @Frawless

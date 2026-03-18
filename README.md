@@ -8,204 +8,61 @@ Library for easy testing of Kubernetes deployments and operators using Fabric8 A
 [![GitHub Release](https://img.shields.io/github/v/release/skodjob/kubetest4j)](https://github.com/skodjob/kubetest4j/releases)
 [![Maven Central Version](https://img.shields.io/maven-central/v/io.skodjob.kubetest4j/kubetest4j)](https://central.sonatype.com/search?q=io.skodjob.kubetest4j)
 
-## Provided functionality
-### Kubernetes resource manager
-[KubeResourceManager](kubetest4j/src/main/java/io/skodjob/kubetest4j/resources/KubeResourceManager.java) provides management of resources created during test phases.
-Every Kubernetes resource created by `KubeResourceManager` is automatically deleted at the end of the test, whether the test passed or failed.
-So the Kubernetes environment is clean before and after every test run and user do not need to handle it.
-Working with Kubernetes resources using `KubeResourceManager` also provides proper wait for resource readiness.
+## Key Features
 
-### Fabric8 Kubernetes client and CMD client
-Instance of `KubeResourceManager` contains accessible fabric8 kubernetes client and kubernetes cmd client.
-These clients are initialized and connected to the test cluster based on the configuration provided by the env file, env variables, or kubeconfig.
-
-### Test visual separation
-For better clarity regarding the test logs, `kubetest4j` library provides ASCII visual separation of tests and test classes.
-
-### Metrics Collector
-The `MetricsCollector` is designed to facilitate the collection of metrics from Kubernetes pods. 
-It integrates seamlessly with Kubernetes environments to gather and process metrics data efficiently. 
-For more detailed documentation, see the MetricsCollector [README](metrics-collector/README.md).
-
-### Log Collector
-`LogCollector` is utility for collecting logs from the Pods (and their containers), descriptions of Pods, and YAML
-descriptions of resources specified by users, collected from the desired Namespaces.
-To Log Collector's [README](log-collector/README.md) contains detailed documentation about this component,
-together with the usage and installation.
-
-### JUnit Extension
-The `junit-extension` module combines all the provided functionality of kubetest4j into a single, easy-to-use JUnit extension. This extension provides a **declarative approach** to Kubernetes testing with best-practice configurations out of the box.
+- **Automatic resource lifecycle** - Every resource created via [KubeResourceManager](kubetest4j/src/main/java/io/skodjob/kubetest4j/resources/KubeResourceManager.java) is automatically cleaned up after each test, whether it passes or fails
+- **Declarative testing** - Use `@KubernetesTest` for annotation-driven namespace management, dependency injection, and log collection ([details](junit-extension/README.md))
+- **Multi-cluster support** - Test across multiple Kubernetes/OpenShift clusters simultaneously with per-context resource managers
+- **Built-in clients** - Auto-configured Fabric8 Kubernetes client and kubectl/oc CLI wrapper
+- **Log & metrics collection** - Collect pod logs on failure ([log-collector](log-collector/README.md)) and scrape Prometheus metrics ([metrics-collector](metrics-collector/README.md))
+- **Visual test separation** - ASCII separators in test logs for better readability
+- **Cluster utilities** - [Helpers](kubetest4j/src/main/java/io/skodjob/kubetest4j/utils) for pod readiness, job management, OLM operations, and more
 
 **Choose your approach:**
-- **Raw kubetest4j modules** - For maximum configurability and fine-grained control over testing behavior. Use individual modules (`kubetest4j`, `log-collector`, `metrics-collector`, etc.) with manual setup and custom annotations.
-- **KubernetesTest extension** - For simple, opinionated testing with best practices pre-configured. Use the `@KubernetesTest` annotation for comprehensive test setup with minimal configuration.
+- **`@KubernetesTest`** (junit-extension) - Declarative, batteries-included. Best for most users.
+- **`@ResourceManager`** (core) - Maximum control, custom setup. Use individual modules directly.
 
-See the [junit-extension README](junit-extension/README.md) for detailed documentation and examples.
+## Getting Started
 
-### Utils
-`kubetest4j` contains also tweaks and [utils](kubetest4j/src/main/java/io/skodjob/kubetest4j/utils) for better working with kubernetes cluster.
+See the **[Quickstart Guide](docs/QUICKSTART.md)** to get your first Kubernetes test running in under 5 minutes.
 
-## Usage
-### Include dependency to your maven test project
-```xml
-<dependency>
-    <groupId>io.skodjob.kubetest4j</groupId>
-    <artifactId>kubetest4j</artifactId>
-    <version>{version}</version>
-</dependency>
-```
-### Or use snapshot releases
-```xml
-<repositories>
-  <repository>
-    <name>Central Portal Snapshots</name>
-    <id>central-portal-snapshots</id>
-    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-    <releases>
-      <enabled>false</enabled>
-    </releases>
-    <snapshots>
-      <enabled>true</enabled>
-    </snapshots>
-  </repository>
-</repositories>
+### Available modules
 
-...
+| Module | Artifact | Description |
+|--------|----------|-------------|
+| Core | `kubetest4j` | Resource manager, clients, utilities |
+| K8s Resources | `kubernetes-resources` | ResourceType implementations for native K8s resources |
+| OpenShift Resources | `openshift-resources` | ResourceType implementations for OpenShift/OLM resources |
+| JUnit Extension | `junit-extension` | Declarative `@KubernetesTest` annotation with DI and log collection |
+| Log Collector | `log-collector` | Pod log/description/YAML collection utility |
+| Metrics Collector | `metrics-collector` | Prometheus metrics scraping from pods |
 
-<dependency>
-    <groupId>io.skodjob.kubetest4j</groupId>
-    <artifactId>kubetest4j</artifactId>
-    <version>{version-snapshot}</version>
-</dependency>
-```
+All modules are published to Maven Central under `io.skodjob.kubetest4j`.
 
-### Use annotations for working with `KubeResourceManager` or other provided functionality
-```java
-//...
-@ResourceManager
-@TestVisualSeparator
-class Test {
-    //...
-}
-//...
-```
-### To disable `KubeResourceManager` clean resources functionality
-```java
-//...
-@ResourceManager(cleanResources = false)
-@TestVisualSeparator
-class Test {
-    //...
-}
-//...
-```
-### Work with `KubeResourceManager` and clients
-```java
-//...
-@ResourceManager
-class Test {
-    @Test
-    void testMethod() {
-        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("test").endMetadata().build();
-        KubeResourceManager.get().createResourceWithWait(ns);
-        assertNotNull(KubeResourceManager.get().kubeCmdClient().get("namespace", "test"));
+## Documentation
 
-        ...
-
-        KubeResourceManager.get().deleteResource(ns);
-    }
-}
-//...
-```
-### Work with multiple cluster contexts
-KubeResourceManager supports both temporary context switching and persistent multi-context usage:
-
-#### Option 1: Temporary Context Switching (Legacy)
-Use `useContext()` for temporary operations in a different context:
-```java
-@ResourceManager
-class Test {
-    @Test
-    void testMethod() {
-        // Default context
-        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("test").endMetadata().build();
-        KubeResourceManager.get().createResourceWithWait(ns);
-
-        // Temporarily switch to prod context
-        try (var ctx = KubeResourceManager.get().useContext("prod")) {
-            Namespace prodNs = new NamespaceBuilder().withNewMetadata().withName("test-prod").endMetadata().build();
-            KubeResourceManager.get().createResourceWithWait(prodNs);
-        }
-        // Automatically returns to previous context
-    }
-}
-```
-
-#### Option 2: Per-Context Singletons (Recommended for Multi-Context)
-Get dedicated instances for each context that can be used simultaneously:
-```java
-@ResourceManager
-class Test {
-    @Test
-    void testMultiContext() {
-        // Get separate instances for each context
-        KubeResourceManager defaultMgr = KubeResourceManager.get();
-        KubeResourceManager prodMgr = KubeResourceManager.getForContext("prod");
-        KubeResourceManager stageMgr = KubeResourceManager.getForContext("stage");
-
-        // All can be used simultaneously without conflicts
-        defaultMgr.createResourceWithWait(defaultDeployment);
-        prodMgr.createResourceWithWait(prodDeployment);
-        stageMgr.createResourceWithWait(stageDeployment);
-    }
-}
-```
-### Register `ResourceType` or `NamespacedResourceType` classes into `KubeResourceManager`
-Include `kubernetes-resources` or for openshift specific resources include also `openshift-resources` package.
-```xml
-...
-<dependency>
-    <groupId>io.skodjob.kubetest4j</groupId>
-    <artifactId>kubetest4j</artifactId>
-    <version>{version}</version>
-</dependency>
-<dependency>
-    <groupId>io.skodjob.kubetest4j</groupId>
-    <artifactId>kubernetes-resources</artifactId>
-    <version>{version}</version>
-</dependency>
-<dependency>
-    <groupId>io.skodjob.kubetest4j</groupId>
-    <artifactId>openshift-resources</artifactId>
-    <version>{version}</version>
-</dependency>
-...
-```
-Then register resources which will be handled specifically by KubeResourceManager.
-If resource is not registered then it is handled as common kubernetes resource with no special readiness check.
-If you have any own resource for your operator then you can implement `ResourceType` interface with your specific readiness and handling.
-```java
-KubeResourceManager.get().setResourceTypes(
-        new NamespaceType(),
-        new JobType(),
-        new NetworkPolicyType(),
-        new SubsciptionType(),
-        new OperatorGroupType()
-);
-```
-
-## Examples
-Examples are stored in [test-examples](test-examples/src/test/java/io/skodjob/kubetest4j/test/integration) module.
+| Document | Description |
+|----------|-------------|
+| [Quickstart Guide](docs/QUICKSTART.md) | Get started in 5 minutes (Maven & Gradle) |
+| [Core Module](kubetest4j/README.md) | KubeResourceManager, clients, multi-context, ResourceTypes, utilities |
+| [JUnit Extension](junit-extension/README.md) | Full `@KubernetesTest` reference, annotations, multi-context, log collection |
+| [Log Collector](log-collector/README.md) | Pod log collection configuration and usage |
+| [Metrics Collector](metrics-collector/README.md) | Prometheus metrics scraping |
+| [Comparison with Alternatives](docs/COMPARISON.md) | How kubetest4j compares to Testcontainers, Fabric8, Arquillian, JKube |
+| [Examples (core)](test-examples/src/test/java/io/skodjob/kubetest4j/test/integration) | Integration test examples using `@ResourceManager` |
+| [Examples (JUnit ext)](junit-extension/src/test/java/io/skodjob/kubetest4j/examples/) | Integration test examples using `@KubernetesTest` |
 
 ## Config environment variables
-* **ENV_FILE** - path to YAML file with env variables values
-* **KUBE_TOKEN** - token of Kube access (use instead of username/password)
-* **KUBE_URL** - URL of the cluster (API URL)
-* **KUBECONFIG** - Path to kubeconfig (Overwrites token and url)
-* **CLIENT_TYPE** - Switch between `kubectl` or `oc` cmd client
-* **KUBE_TOKEN_XXX** - token of Kube access (additional cluster use suffix like PROD, DEV, TEST)
-* **KUBE_URL_XXX** - URL of the cluster (additional cluster use suffix like PROD, DEV, TEST)
-* **KUBECONFIG_XXX** - Path to kubeconfig (additional cluster use suffix like PROD, DEV, TEST)
+| Variable | Description |
+|----------|-------------|
+| `ENV_FILE` | Path to YAML file with environment variable values |
+| `KUBE_URL` | URL of the cluster (API URL) |
+| `KUBE_TOKEN` | Token for cluster access |
+| `KUBECONFIG` | Path to kubeconfig (overrides URL/token) |
+| `CLIENT_TYPE` | Switch between `kubectl` or `oc` (default: `kubectl`) |
+| `KUBE_URL_XXX` | URL for additional cluster (suffix like PROD, DEV, TEST) |
+| `KUBE_TOKEN_XXX` | Token for additional cluster |
+| `KUBECONFIG_XXX` | Kubeconfig for additional cluster |
 
 ## Adopters
 * [opendatahub.io](https://github.com/opendatahub-io/opendatahub-operator) operator test suite - [odh-e2e](https://github.com/skodjob/odh-e2e)
