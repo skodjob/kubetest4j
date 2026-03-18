@@ -15,6 +15,9 @@ kind create cluster
 
 ## 1. Add Dependencies
 
+Replace `{version}` below with the latest release from
+[![Maven Central](https://img.shields.io/maven-central/v/io.skodjob.kubetest4j/kubetest4j)](https://central.sonatype.com/search?q=io.skodjob.kubetest4j).
+
 kubetest4j offers two approaches. Pick the one that fits your needs:
 
 | Approach | Best for | Annotation |
@@ -29,13 +32,13 @@ kubetest4j offers two approaches. Pick the one that fits your needs:
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>junit-extension</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubernetes-resources</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -45,13 +48,13 @@ kubetest4j offers two approaches. Pick the one that fits your needs:
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubetest4j</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>kubernetes-resources</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -60,18 +63,18 @@ kubetest4j offers two approaches. Pick the one that fits your needs:
 
 **JUnit Extension (recommended):**
 ```groovy
-testImplementation 'io.skodjob.kubetest4j:junit-extension:1.0.0'
-testImplementation 'io.skodjob.kubetest4j:kubernetes-resources:1.0.0'
+testImplementation 'io.skodjob.kubetest4j:junit-extension:{version}'
+testImplementation 'io.skodjob.kubetest4j:kubernetes-resources:{version}'
 ```
 
 **Core only:**
 ```groovy
-testImplementation 'io.skodjob.kubetest4j:kubetest4j:1.0.0'
-testImplementation 'io.skodjob.kubetest4j:kubernetes-resources:1.0.0'
+testImplementation 'io.skodjob.kubetest4j:kubetest4j:{version}'
+testImplementation 'io.skodjob.kubetest4j:kubernetes-resources:{version}'
 ```
 
-> **Snapshot builds:** To use the latest development version, add the Sonatype snapshots repository
-> and use version `1.1.0-SNAPSHOT`. See [Snapshot Configuration](#snapshot-configuration) at the bottom.
+> **Snapshot builds:** To use the latest development snapshot, add the Sonatype snapshots repository.
+> See [Snapshot Configuration](#snapshot-configuration) at the bottom.
 
 ## 2. Write Your First Test
 
@@ -221,7 +224,7 @@ For OpenShift-specific resources (OLM Subscriptions, CatalogSources, etc.):
 <dependency>
     <groupId>io.skodjob.kubetest4j</groupId>
     <artifactId>openshift-resources</artifactId>
-    <version>1.0.0</version>
+    <version>{version}</version>
     <scope>test</scope>
 </dependency>
 ```
