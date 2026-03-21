@@ -20,8 +20,11 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
@@ -209,31 +212,60 @@ class DependencyInjector {
                     (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
             }
 
-            // Load resource from file
-            List<HasMetadata> resources = resourceManager.readResourcesFromFile(
-                Paths.get(annotation.value()));
+            List<HasMetadata> resources = loadResources(annotation.value(), resourceManager, context);
 
             if (resources.isEmpty()) {
                 throw new RuntimeException("No resources found in file: " + annotation.value());
             }
 
-            // Find resource of matching type
-            HasMetadata resource = resources.stream()
-                .filter(r -> targetType.isAssignableFrom(r.getClass()))
-                .findFirst()
-                .orElse(resources.getFirst());
+            Class<?> expectedType = annotation.type() == Object.class ? targetType : annotation.type();
+            HasMetadata resource = selectResource(resources, expectedType, annotation.name(), annotation.value());
 
-            // Apply resource to cluster
             if (annotation.waitForReady()) {
-                resourceManager.createOrUpdateResourceWithWait(resource);
+                resourceManager.createOrUpdateResourceWithWait(resources.toArray(new HasMetadata[0]));
             } else {
-                resourceManager.createOrUpdateResourceWithoutWait(resource);
+                resourceManager.createOrUpdateResourceWithoutWait(resources.toArray(new HasMetadata[0]));
             }
 
             return (T) resource;
         } catch (IOException e) {
             throw new RuntimeException("Failed to load resource from: " + annotation.value(), e);
         }
+    }
+
+    private List<HasMetadata> loadResources(String resourcePath, KubeResourceManager resourceManager,
+                                            ExtensionContext context) throws IOException {
+        Path filePath = Paths.get(resourcePath);
+        if (Files.exists(filePath)) {
+            return resourceManager.readResourcesFromFile(filePath);
+        }
+
+        ClassLoader classLoader = context.getRequiredTestClass().getClassLoader();
+        InputStream inputStream = classLoader.getResourceAsStream(resourcePath);
+        if (inputStream == null) {
+            inputStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath);
+        }
+
+        if (inputStream == null) {
+            throw new IOException("Resource not found on filesystem or classpath: " + resourcePath);
+        }
+
+        return resourceManager.readResourcesFromFile(inputStream);
+    }
+
+    private HasMetadata selectResource(List<HasMetadata> resources, Class<?> expectedType,
+                                       String resourceName, String resourcePath) {
+        return resources.stream()
+            .filter(resource -> resourceMatchesType(resource, expectedType))
+            .filter(resource -> resourceName.isBlank() || resourceName.equals(resource.getMetadata().getName()))
+            .findFirst()
+            .orElseThrow(() -> new RuntimeException("No matching resource found in " + resourcePath
+                + " for type " + expectedType.getSimpleName()
+                + (resourceName.isBlank() ? "" : " and name " + resourceName)));
+    }
+
+    private boolean resourceMatchesType(HasMetadata resource, Class<?> expectedType) {
+        return expectedType == Object.class || expectedType.isAssignableFrom(resource.getClass());
     }
 
     /**

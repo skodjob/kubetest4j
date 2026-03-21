@@ -34,11 +34,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 class ResourceInjectionIT {
 
-    @InjectResource("src/test/resources/test-deployment-2.yaml")
+    @InjectResource("test-deployment-2.yaml")
     Deployment deployment;
 
-    @InjectResource(value = "src/test/resources/test-service.yaml", type = Service.class)
+    @InjectResource(value = "test-service.yaml", type = Service.class)
     Service service;
+
+    @InjectResource(value = "test-manifest.yaml", type = Service.class, name = "manifest-service", waitForReady = false)
+    Service serviceFromManifest;
 
     @InjectKubeClient
     KubeClient client;
@@ -77,14 +80,32 @@ class ResourceInjectionIT {
     }
 
     @Test
-    void testParameterInjection(@InjectResource("src/test/resources/test-deployment-2.yaml") Deployment paramDeployment,
-                                @InjectResource("src/test/resources/test-service.yaml") Service paramService) {
+    void testParameterInjection(@InjectResource("test-deployment-2.yaml") Deployment paramDeployment,
+                                @InjectResource("test-service.yaml") Service paramService) {
         // Demonstrate parameter injection for resources
         assertNotNull(paramDeployment, "Parameter deployment should be injected");
         assertNotNull(paramService, "Parameter service should be injected");
 
         assertEquals("test-deployment", paramDeployment.getMetadata().getName());
         assertEquals("test-service", paramService.getMetadata().getName());
+    }
+
+    @Test
+    void testManifestSelectionFromClasspath() {
+        assertNotNull(serviceFromManifest, "Service should be selected from multi-resource classpath manifest");
+        assertEquals("manifest-service", serviceFromManifest.getMetadata().getName());
+
+        Deployment clusterDeployment = client.getClient().apps().deployments()
+            .inNamespace("resource-injection-test")
+            .withName("manifest-deployment")
+            .get();
+        assertNotNull(clusterDeployment, "Deployment from manifest should be applied to the cluster");
+
+        Service clusterService = client.getClient().services()
+            .inNamespace("resource-injection-test")
+            .withName("manifest-service")
+            .get();
+        assertNotNull(clusterService, "Selected service from manifest should be applied to the cluster");
     }
 
     @Test
