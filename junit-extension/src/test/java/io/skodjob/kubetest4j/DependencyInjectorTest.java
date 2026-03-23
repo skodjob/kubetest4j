@@ -6,6 +6,10 @@ package io.skodjob.kubetest4j;
 
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
+import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServiceBuilder;
+import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.skodjob.kubetest4j.annotations.InjectCmdKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectNamespace;
@@ -30,12 +34,14 @@ import java.lang.reflect.Parameter;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -182,7 +188,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should resolve InjectKubeClient parameter")
-        void shouldResolveInjectKubeClientParameter() throws Exception {
+        void shouldResolveInjectKubeClientParameter() {
             // Given
             InjectKubeClient annotation = createInjectKubeClientAnnotation("");
             when(parameterContext.isAnnotated(InjectKubeClient.class)).thenReturn(true);
@@ -198,7 +204,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should resolve InjectCmdKubeClient parameter")
-        void shouldResolveInjectCmdKubeClientParameter() throws Exception {
+        void shouldResolveInjectCmdKubeClientParameter() {
             // Given
             InjectCmdKubeClient annotation = createInjectCmdKubeClientAnnotation("");
             when(parameterContext.isAnnotated(InjectCmdKubeClient.class)).thenReturn(true);
@@ -214,7 +220,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should resolve InjectResourceManager parameter")
-        void shouldResolveInjectResourceManagerParameter() throws Exception {
+        void shouldResolveInjectResourceManagerParameter() {
             // Given
             InjectResourceManager annotation = createInjectResourceManagerAnnotation("");
             when(parameterContext.isAnnotated(InjectResourceManager.class)).thenReturn(true);
@@ -230,7 +236,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should resolve InjectNamespaces parameter")
-        void shouldResolveInjectNamespacesParameter() throws Exception {
+        void shouldResolveInjectNamespacesParameter() {
             // Given
             InjectNamespaces annotation = createInjectNamespacesAnnotation("");
             Map<String, Namespace> namespaces = Map.of("test-ns",
@@ -249,7 +255,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should resolve InjectNamespace parameter")
-        void shouldResolveInjectNamespaceParameter() throws Exception {
+        void shouldResolveInjectNamespaceParameter() {
             // Given
             InjectNamespace annotation = createInjectNamespaceAnnotation("test-ns", "");
             Namespace namespace = new NamespaceBuilder().withNewMetadata().withName("test-ns").endMetadata().build();
@@ -264,6 +270,67 @@ class DependencyInjectorTest {
 
             // Then
             assertEquals(namespace, result);
+        }
+
+        @Test
+        @DisplayName("Should resolve InjectResource parameter from classpath resource")
+        void shouldResolveInjectResourceParameterFromClasspathResource() throws Exception {
+            // Given
+            InjectResource annotation = createInjectResourceAnnotation(
+                "test-deployment.yaml", Object.class, "", true, "");
+            Deployment deployment = new DeploymentBuilder()
+                .withNewMetadata()
+                .withName("test-deployment")
+                .endMetadata()
+                .build();
+
+            when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
+            when(parameter.getAnnotation(InjectResource.class)).thenReturn(annotation);
+            when(parameter.getType()).thenReturn((Class) Deployment.class);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(extensionContext.getRequiredTestClass()).thenReturn((Class) DependencyInjectorTest.class);
+            when(resourceManager.readResourcesFromFile(any(java.io.InputStream.class)))
+                .thenReturn(java.util.List.of(deployment));
+
+            // When
+            Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
+
+            // Then
+            assertEquals(deployment, result);
+            verify(resourceManager).createOrUpdateResourceWithWait(deployment);
+        }
+
+        @Test
+        @DisplayName("Should apply all resources from manifest and inject selected resource")
+        void shouldApplyAllResourcesFromManifestAndInjectSelectedResource() throws Exception {
+            // Given
+            InjectResource annotation = createInjectResourceAnnotation(
+                "test-manifest.yaml", Service.class, "manifest-service", false, "");
+            Deployment deployment = new DeploymentBuilder()
+                .withNewMetadata()
+                .withName("manifest-deployment")
+                .endMetadata()
+                .build();
+            Service service = new ServiceBuilder()
+                .withNewMetadata()
+                .withName("manifest-service")
+                .endMetadata()
+                .build();
+
+            when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
+            when(parameter.getAnnotation(InjectResource.class)).thenReturn(annotation);
+            when(parameter.getType()).thenReturn((Class) Service.class);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(extensionContext.getRequiredTestClass()).thenReturn((Class) DependencyInjectorTest.class);
+            when(resourceManager.readResourcesFromFile(any(java.io.InputStream.class)))
+                .thenReturn(java.util.List.of(deployment, service));
+
+            // When
+            Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
+
+            // Then
+            assertEquals(service, result);
+            verify(resourceManager).createOrUpdateResourceWithoutWait(deployment, service);
         }
 
         @Test
@@ -287,7 +354,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should inject annotated fields")
-        void shouldInjectAnnotatedFields() throws Exception {
+        void shouldInjectAnnotatedFields() {
             // Given
             TestClassWithFields testInstance = new TestClassWithFields();
             when(extensionContext.getTestInstance()).thenReturn(Optional.of(testInstance));
@@ -314,7 +381,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should throw RuntimeException when field injection fails")
-        void shouldThrowRuntimeExceptionWhenFieldInjectionFails() throws Exception {
+        void shouldThrowRuntimeExceptionWhenFieldInjectionFails() {
             // Given
             TestClassWithFields testInstance = new TestClassWithFields();
             when(extensionContext.getTestInstance()).thenReturn(Optional.of(testInstance));
@@ -333,7 +400,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should inject KubeClient for specific context")
-        void shouldInjectKubeClientForSpecificContext() throws Exception {
+        void shouldInjectKubeClientForSpecificContext() {
             // Given
             InjectKubeClient annotation = createInjectKubeClientAnnotation("staging");
             when(parameterContext.isAnnotated(InjectKubeClient.class)).thenReturn(true);
@@ -349,7 +416,7 @@ class DependencyInjectorTest {
 
         @Test
         @DisplayName("Should inject namespaces for specific context")
-        void shouldInjectNamespacesForSpecificContext() throws Exception {
+        void shouldInjectNamespacesForSpecificContext() {
             // Given
             InjectNamespaces annotation = createInjectNamespacesAnnotation("staging");
             Map<String, Namespace> namespaces = Map.of("stg-ns",
@@ -421,6 +488,100 @@ class DependencyInjectorTest {
         }
 
         @Test
+        @DisplayName("Should throw exception when InjectResource cannot select matching resource")
+        void shouldThrowExceptionWhenInjectResourceCannotSelectMatchingResource() throws Exception {
+            // Given
+            InjectResource annotation = createInjectResourceAnnotation(
+                "test-manifest.yaml", Service.class, "missing-service", true, "");
+            Deployment deployment = new DeploymentBuilder()
+                .withNewMetadata()
+                .withName("test-deployment")
+                .endMetadata()
+                .build();
+
+            when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
+            when(parameter.getAnnotation(InjectResource.class)).thenReturn(annotation);
+            when(parameter.getType()).thenReturn((Class) Service.class);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(extensionContext.getRequiredTestClass()).thenReturn((Class) DependencyInjectorTest.class);
+            when(resourceManager.readResourcesFromFile(any(java.io.InputStream.class)))
+                .thenReturn(java.util.List.of(deployment));
+
+            // When & Then
+            RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> dependencyInjector.resolveParameter(parameterContext, extensionContext));
+            assertTrue(exception.getMessage().contains("No matching resource found"));
+        }
+
+        @Test
+        @DisplayName("Should throw exception when resource file not found on classpath")
+        void shouldThrowExceptionWhenResourceFileNotFoundOnClasspath() {
+            // Given
+            InjectResource annotation = createInjectResourceAnnotation(
+                "nonexistent-file.yaml", Object.class, "", true, "");
+
+            when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
+            when(parameter.getAnnotation(InjectResource.class)).thenReturn(annotation);
+            when(parameter.getType()).thenReturn((Class) Deployment.class);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(extensionContext.getRequiredTestClass()).thenReturn((Class) DependencyInjectorTest.class);
+
+            // When & Then
+            RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> dependencyInjector.resolveParameter(parameterContext, extensionContext));
+            assertTrue(exception.getMessage().contains("Failed to load resource from: nonexistent-file.yaml"));
+        }
+
+        @Test
+        @DisplayName("Should throw exception when resource file has no resources")
+        void shouldThrowExceptionWhenResourceFileHasNoResources() throws Exception {
+            // Given
+            InjectResource annotation = createInjectResourceAnnotation(
+                "test-deployment.yaml", Object.class, "", true, "");
+
+            when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
+            when(parameter.getAnnotation(InjectResource.class)).thenReturn(annotation);
+            when(parameter.getType()).thenReturn((Class) Deployment.class);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(extensionContext.getRequiredTestClass()).thenReturn((Class) DependencyInjectorTest.class);
+            when(resourceManager.readResourcesFromFile(any(java.io.InputStream.class)))
+                .thenReturn(java.util.List.of());
+
+            // When & Then
+            RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> dependencyInjector.resolveParameter(parameterContext, extensionContext));
+            assertTrue(exception.getMessage().contains("No resources found in file"));
+        }
+
+        @Test
+        @DisplayName("Should load resource from filesystem path")
+        void shouldLoadResourceFromFilesystemPath() throws Exception {
+            // Given - use an actual file path that exists on disk
+            String filePath = getClass().getClassLoader().getResource("test-deployment.yaml").getPath();
+            InjectResource annotation = createInjectResourceAnnotation(
+                filePath, Object.class, "", true, "");
+            Deployment deployment = new DeploymentBuilder()
+                .withNewMetadata()
+                .withName("test-deployment")
+                .endMetadata()
+                .build();
+
+            when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
+            when(parameter.getAnnotation(InjectResource.class)).thenReturn(annotation);
+            when(parameter.getType()).thenReturn((Class) Deployment.class);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(resourceManager.readResourcesFromFile(any(java.nio.file.Path.class)))
+                .thenReturn(java.util.List.of(deployment));
+
+            // When
+            Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
+
+            // Then
+            assertEquals(deployment, result);
+            verify(resourceManager).readResourcesFromFile(any(java.nio.file.Path.class));
+        }
+
+        @Test
         @DisplayName("Should throw exception for unsupported injection type")
         void shouldThrowExceptionForUnsupportedInjectionType() {
             // Given - parameter with no supported annotations
@@ -485,6 +646,41 @@ class DependencyInjectorTest {
             @Override
             public Class<? extends java.lang.annotation.Annotation> annotationType() {
                 return InjectResourceManager.class;
+            }
+
+            @Override
+            public String kubeContext() {
+                return context;
+            }
+        };
+    }
+
+    private InjectResource createInjectResourceAnnotation(
+        String value, Class<?> type, String name, boolean waitForReady, String context) {
+        return new InjectResource() {
+            @Override
+            public Class<? extends java.lang.annotation.Annotation> annotationType() {
+                return InjectResource.class;
+            }
+
+            @Override
+            public String value() {
+                return value;
+            }
+
+            @Override
+            public Class<?> type() {
+                return type;
+            }
+
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public boolean waitForReady() {
+                return waitForReady;
             }
 
             @Override

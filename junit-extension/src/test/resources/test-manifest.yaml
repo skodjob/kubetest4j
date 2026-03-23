@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manifest-deployment
+  namespace: resource-injection-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: manifest-app
+  template:
+    metadata:
+      labels:
+        app: manifest-app
+    spec:
+      containers:
+        - name: test-container
+          image: quay.io/prometheus/busybox
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: manifest-service
+  namespace: resource-injection-test
+spec:
+  selector:
+    app: manifest-app
+  ports:
+    - port: 80
+      targetPort: 8080

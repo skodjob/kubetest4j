@@ -55,6 +55,14 @@ public @interface InjectResource {
     Class<?> type() default Object.class;
 
     /**
+     * Specific resource metadata.name to inject from a multi-resource manifest.
+     * If empty, the first matching resource by type is used.
+     *
+     * @return resource metadata.name
+     */
+    String name() default "";
+
+    /**
      * Whether to wait for the resource to be ready after creation.
      *
      * @return true to wait for readiness, false otherwise

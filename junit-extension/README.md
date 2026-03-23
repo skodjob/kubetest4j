@@ -362,7 +362,7 @@ void testSpecificNamespace(
 
 ### @InjectResource
 
-Load and inject resources from YAML files:
+Load and inject resources from YAML files or classpath manifests:
 
 ```java
 @InjectResource("deployment.yaml")
@@ -370,6 +370,9 @@ Deployment deployment;
 
 @InjectResource(value = "service.yaml", waitForReady = true)
 Service service;
+
+@InjectResource(value = "manifest.yaml", type = Service.class, name = "frontend-service")
+Service selectedService;
 
 // Context-specific resource injection
 @InjectResource(kubeContext = "staging", value = "staging-deployment.yaml")
@@ -387,6 +390,9 @@ void testResourceInjection(
     assertEquals("stg-frontend", stagingConfig.getMetadata().getNamespace());
 }
 ```
+
+`value` accepts either a classpath resource name such as `deployment.yaml` or a filesystem path.
+For multi-document YAML manifests, kubetest4j applies all resources from the manifest and injects the one matching the field or parameter type, optionally narrowed by `type` and `name`.
 
 ## Cleanup Strategies
 
@@ -436,12 +442,16 @@ spec:
 class ResourceTest {
 
     @InjectResource("test-deployment.yaml")
-    Deployment deployment; // Automatically loaded and applied
+    Deployment deployment; // Loaded from test classpath and automatically applied
+
+    @InjectResource(value = "test-manifest.yaml", type = Service.class, name = "test-service")
+    Service service; // Selected from a multi-document manifest
 
     @Test
     void testDeployment() {
         assertEquals(2, deployment.getSpec().getReplicas());
-        // Deployment is already running in the cluster
+        assertEquals("test-service", service.getMetadata().getName());
+        // Both manifest resources are already running in the cluster
     }
 }
 ```

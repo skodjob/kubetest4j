@@ -374,6 +374,9 @@
                 <configuration>
                     <skipITs>${it.skip}</skipITs>
                     <forkCount>1</forkCount>
+                    <argLine>@{argLine}
+                        -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                    </argLine>
                     <includes>
                         <include>**/IT*.java</include>
                         <include>**/*IT.java</include>
@@ -391,10 +394,10 @@
                 <version>${maven.surefire.version}</version>
                 <inherited>true</inherited>
                 <configuration>
+                    <argLine>@{argLine}
+                        -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                    </argLine>
                     <properties>
-                        <argLine>@{argLine}
-                            -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
-                        </argLine>
                         <configurationParameters>
                             junit.jupiter.extensions.autodetection.enabled = true
                         </configurationParameters>

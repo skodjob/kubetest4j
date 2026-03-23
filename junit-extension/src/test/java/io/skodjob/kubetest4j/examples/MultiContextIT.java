@@ -262,7 +262,7 @@ class MultiContextIT {
 
     @Test
     void testResourceInjectionWithKubeContext(
-        @InjectResource(kubeContext = "staging", value = "src/test/resources/test-deployment.yaml")
+        @InjectResource(kubeContext = "staging", value = "test-deployment.yaml")
         Deployment injectedDeployment
     ) {
         LOGGER.info("=== Testing Resource Injection with KubeContext ===");
