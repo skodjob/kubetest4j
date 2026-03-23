@@ -358,6 +358,33 @@ public final class KubeResourceManager {
             .push(item);
     }
 
+    /**
+     * Removes a resource from the stack.
+     *
+     * @param resource The resource to remove.
+     * @param <T>      The type of the resource.
+     */
+    public <T extends HasMetadata> void removeFromStack(T resource) {
+        Map<String, Stack<ResourceItem<?>>> byTest = STORED_RESOURCES.get(this.contextId);
+        if (byTest == null) {
+            return;
+        }
+        ExtensionContext ctx = getTestContext();
+        if (ctx == null) {
+            return;
+        }
+        Stack<ResourceItem<?>> stack = byTest.get(ctx.getDisplayName());
+        if (stack == null) {
+            return;
+        }
+        stack.removeIf(item -> item.resource() != null
+            && item.resource().getKind().equals(resource.getKind())
+            && Objects.equals(item.resource().getMetadata().getNamespace(),
+                resource.getMetadata().getNamespace())
+            && item.resource().getMetadata().getName()
+                .equals(resource.getMetadata().getName()));
+    }
+
     /* ─────────────────────────  RESOURCE I/O HELPERS  ─────────────────────── */
 
     /**
@@ -673,6 +700,8 @@ public final class KubeResourceManager {
                 } else {
                     type.delete(resource);
                 }
+
+                removeFromStack(resource);
 
                 if (waitForDeletion) {
                     decideDeleteWaitAsync(waiters, async, resource);

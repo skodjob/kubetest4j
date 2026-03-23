@@ -414,6 +414,61 @@ class KubeResourceManagerTest {
     }
 
     @Test
+    void testDeleteResourceRemovesFromStack() {
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata().withName("stack-del-1").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata().withName("stack-del-2").endMetadata().build();
+
+        KubeResourceManager.get().createResourceWithWait(ns1);
+        KubeResourceManager.get().createResourceWithWait(ns2);
+
+        List<HasMetadata> resources = KubeResourceManager.get().getCurrentResources();
+        assertTrue(resources.stream().anyMatch(r -> "stack-del-1".equals(r.getMetadata().getName())),
+            "stack-del-1 should be in stored resources after creation");
+        assertTrue(resources.stream().anyMatch(r -> "stack-del-2".equals(r.getMetadata().getName())),
+            "stack-del-2 should be in stored resources after creation");
+
+        KubeResourceManager.get().deleteResourceWithWait(ns1);
+
+        List<HasMetadata> afterDelete = KubeResourceManager.get().getCurrentResources();
+        assertTrue(afterDelete.stream().noneMatch(r -> "stack-del-1".equals(r.getMetadata().getName())),
+            "stack-del-1 should be removed from stored resources after explicit deletion");
+        assertTrue(afterDelete.stream().anyMatch(r -> "stack-del-2".equals(r.getMetadata().getName())),
+            "stack-del-2 should still be in stored resources");
+    }
+
+    @Test
+    void testDeleteResourceWithoutWaitRemovesFromStack() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("stack-del-nowait").endMetadata().build();
+
+        KubeResourceManager.get().createResourceWithWait(ns);
+        assertTrue(KubeResourceManager.get().getCurrentResources().stream()
+                .anyMatch(r -> "stack-del-nowait".equals(r.getMetadata().getName())),
+            "Resource should be in stored resources after creation");
+
+        KubeResourceManager.get().deleteResourceWithoutWait(ns);
+
+        assertTrue(KubeResourceManager.get().getCurrentResources().stream()
+                .noneMatch(r -> "stack-del-nowait".equals(r.getMetadata().getName())),
+            "Resource should be removed from stored resources after deleteWithoutWait");
+    }
+
+    @Test
+    void testDeleteResourceAsyncWaitRemovesFromStack() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("stack-del-async").endMetadata().build();
+
+        KubeResourceManager.get().createResourceWithWait(ns);
+        assertTrue(KubeResourceManager.get().getCurrentResources().stream()
+                .anyMatch(r -> "stack-del-async".equals(r.getMetadata().getName())),
+            "Resource should be in stored resources after creation");
+
+        KubeResourceManager.get().deleteResourceAsyncWait(ns);
+
+        assertTrue(KubeResourceManager.get().getCurrentResources().stream()
+                .noneMatch(r -> "stack-del-async".equals(r.getMetadata().getName())),
+            "Resource should be removed from stored resources after deleteAsyncWait");
+    }
+
+    @Test
     void testPushToStack() throws Exception {
         // Create a test resource item
         Namespace ns = new NamespaceBuilder().withNewMetadata().withName("stack-test").endMetadata().build();
