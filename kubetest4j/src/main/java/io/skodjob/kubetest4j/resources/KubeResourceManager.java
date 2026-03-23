@@ -369,7 +369,11 @@ public final class KubeResourceManager {
         if (byTest == null) {
             return;
         }
-        Stack<ResourceItem<?>> stack = byTest.get(getTestContext().getDisplayName());
+        ExtensionContext ctx = getTestContext();
+        if (ctx == null) {
+            return;
+        }
+        Stack<ResourceItem<?>> stack = byTest.get(ctx.getDisplayName());
         if (stack == null) {
             return;
         }
