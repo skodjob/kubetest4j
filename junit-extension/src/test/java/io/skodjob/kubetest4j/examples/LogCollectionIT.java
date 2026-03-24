@@ -6,12 +6,14 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -34,10 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @KubernetesTest(
-    namespaces = {"log-collection-test"},
     cleanup = CleanupStrategy.AUTOMATIC,
-
-    // ===== Log Collection Configuration =====
     collectLogs = true,
     logCollectionStrategy = LogCollectionStrategy.AFTER_EACH,
     collectPreviousLogs = true,
@@ -45,6 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
     collectClusterWideResources = {"nodes"}
 )
 class LogCollectionIT {
+
+    @ClassNamespace(name = "log-collection-test")
+    static Namespace logCollectionNs;
 
     @InjectKubeClient
     KubeClient client;

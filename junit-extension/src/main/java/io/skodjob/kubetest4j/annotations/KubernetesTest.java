@@ -17,10 +17,18 @@ import java.lang.annotation.Target;
  * Main annotation to enable Kubernetes test framework features for JUnit 6.
  * This annotation automatically sets up the test environment, manages resources,
  * and provides dependency injection for Kubernetes clients.
+ * <p>
+ * Namespaces are declared using {@link ClassNamespace} (class-level, static fields)
+ * and {@link MethodNamespace} (per-test-method, instance fields/parameters) annotations
+ * directly on test fields, rather than in this annotation.
+ * <p>
  * Usage:
  * <pre>
- * &#64;KubernetesTest(namespace = "my-test-ns")
+ * &#64;KubernetesTest
  * class MyKubernetesTest {
+ *     &#64;ClassNamespace(name = "my-test-ns")
+ *     static Namespace testNs;
+ *
  *     &#64;InjectKubeClient
  *     KubeClient client;
  *
@@ -38,22 +46,11 @@ import java.lang.annotation.Target;
 public @interface KubernetesTest {
 
     /**
-     * The Kubernetes namespaces to create for testing.
-     * If not specified, a unique namespace will be generated.
-     * Users must explicitly specify namespaces in their resource metadata.
-     *
-     * @return array of namespace names to create
-     */
-    String[] namespaces() default {};
-
-
-    /**
      * When to clean up resources created during the test.
      *
      * @return cleanup strategy
      */
     CleanupStrategy cleanup() default CleanupStrategy.AUTOMATIC;
-
 
     /**
      * Whether to store YAML representations of created resources to disk.
@@ -68,20 +65,6 @@ public @interface KubernetesTest {
      * @return YAML storage directory
      */
     String yamlStorePath() default "";
-
-    /**
-     * Labels to apply to the test namespace.
-     *
-     * @return array of label key=value pairs
-     */
-    String[] namespaceLabels() default {};
-
-    /**
-     * Annotations to apply to the test namespace.
-     *
-     * @return array of annotation key=value pairs
-     */
-    String[] namespaceAnnotations() default {};
 
     /**
      * Character to use for visual test separators.
@@ -145,62 +128,4 @@ public @interface KubernetesTest {
      * @return array of cluster-wide resource types
      */
     String[] collectClusterWideResources() default {};
-
-
-    // ===============================
-    // Multi-KubeContext Support
-    // ===============================
-
-    /**
-     * Additional Kubernetes contexts for multi-context testing.
-     * Each additional context defines namespaces and configuration beyond the primary context.
-     * The primary context is defined by the top-level annotation parameters.
-     *
-     * @return array of additional Kubernetes contexts
-     */
-    AdditionalKubeContext[] additionalKubeContexts() default {};
-
-    /**
-     * Defines an additional Kubernetes context configuration.
-     * This is used alongside the primary context defined by the main annotation parameters.
-     */
-    @interface AdditionalKubeContext {
-        /**
-         * The name of the additional Kubernetes context.
-         *
-         * @return Kubernetes context name
-         */
-        String name();
-
-        /**
-         * Namespaces to create in this additional context.
-         *
-         * @return array of namespace names
-         */
-        String[] namespaces();
-
-        /**
-         * Cleanup strategy for this additional context.
-         * Defaults to AUTOMATIC if not specified.
-         *
-         * @return cleanup strategy
-         */
-        CleanupStrategy cleanup() default CleanupStrategy.AUTOMATIC;
-
-        /**
-         * Labels to apply to namespaces in this additional context.
-         * Format: "key=value" pairs.
-         *
-         * @return array of label key=value pairs
-         */
-        String[] namespaceLabels() default {};
-
-        /**
-         * Annotations to apply to namespaces in this additional context.
-         * Format: "key=value" pairs.
-         *
-         * @return array of annotation key=value pairs
-         */
-        String[] namespaceAnnotations() default {};
-    }
 }

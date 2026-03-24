@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Helper class that centralizes all ExtensionContext.Store access patterns.
@@ -33,6 +34,12 @@ class ContextStoreHelper {
     private static final String CONTEXT_CLOSERS_KEY = "kubernetes.test.contextClosers";
     private static final String CONTEXT_NAMESPACE_OBJECTS_KEY = "kubernetes.test.contextNamespaceObjects";
     private static final String CONTEXT_CREATED_NAMESPACES_KEY = "kubernetes.test.contextCreatedNamespaces";
+
+    // Class namespace store keys (stored in class-level ExtensionContext)
+    private static final String CLASS_NAMESPACE_ENTRIES_KEY = "kubernetes.test.classNamespaceEntries";
+
+    // Method namespace store keys (stored in method-level ExtensionContext)
+    private static final String METHOD_NAMESPACE_ENTRIES_KEY = "kubernetes.test.methodNamespaceEntries";
 
     // ===============================
     // Basic Store Operations
@@ -265,5 +272,58 @@ class ContextStoreHelper {
     public Map<String, AutoCloseable> getAllContextClosers(ExtensionContext context) {
         Map<String, AutoCloseable> contextClosers = getOrCreateContextClosers(context);
         return contextClosers.isEmpty() ? java.util.Collections.emptyMap() : contextClosers;
+    }
+
+    // ===============================
+    // Class Namespace Store Operations
+    // ===============================
+
+    /**
+     * Stores class namespace entries in the extension context.
+     *
+     * @param context the extension context (should be class-level)
+     * @param entries list of class namespace entries
+     */
+    public void putClassNamespaceEntries(ExtensionContext context,
+                                          List<ClassNamespaceService.ClassNamespaceEntry> entries) {
+        put(context, CLASS_NAMESPACE_ENTRIES_KEY, new CopyOnWriteArrayList<>(entries));
+    }
+
+    /**
+     * Gets class namespace entries from the extension context.
+     *
+     * @param context the extension context
+     * @return list of class namespace entries, or null if none stored
+     */
+    public List<ClassNamespaceService.ClassNamespaceEntry> getClassNamespaceEntries(
+        ExtensionContext context) {
+        return getUnchecked(context, CLASS_NAMESPACE_ENTRIES_KEY);
+    }
+
+    // ===============================
+    // Method Namespace Store Operations
+    // ===============================
+
+    /**
+     * Stores method namespace entries in the extension context.
+     * These are keyed by injection source identity (field name or parameter name).
+     *
+     * @param context the extension context (should be method-level for per-test scoping)
+     * @param entries list of method namespace entries
+     */
+    public void putMethodNamespaceEntries(ExtensionContext context,
+                                           List<MethodNamespaceService.MethodNamespaceEntry> entries) {
+        put(context, METHOD_NAMESPACE_ENTRIES_KEY, new CopyOnWriteArrayList<>(entries));
+    }
+
+    /**
+     * Gets method namespace entries from the extension context.
+     *
+     * @param context the extension context
+     * @return list of method namespace entries, or null if none stored
+     */
+    public List<MethodNamespaceService.MethodNamespaceEntry> getMethodNamespaceEntries(
+        ExtensionContext context) {
+        return getUnchecked(context, METHOD_NAMESPACE_ENTRIES_KEY);
     }
 }

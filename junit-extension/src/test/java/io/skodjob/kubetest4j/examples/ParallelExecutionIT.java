@@ -8,7 +8,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
-import io.skodjob.kubetest4j.annotations.InjectNamespace;
+import io.skodjob.kubetest4j.annotations.MethodNamespace;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
@@ -28,10 +28,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@KubernetesTest(
-    namespaces = {"parallel-ns-alpha", "parallel-ns-bravo", "parallel-ns-charlie"},
-    cleanup = CleanupStrategy.AUTOMATIC
-)
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Execution(ExecutionMode.CONCURRENT)
 class ParallelExecutionIT {
@@ -49,7 +46,7 @@ class ParallelExecutionIT {
 
     @Test
     void testConcurrentResourceCreationInAlpha(
-            @InjectNamespace(name = "parallel-ns-alpha") Namespace ns) throws InterruptedException {
+            @MethodNamespace(prefix = "parallel-alpha") Namespace ns) throws InterruptedException {
         threadNames.add(Thread.currentThread().getName());
         allMethodsStarted.countDown();
         allMethodsStarted.await(30, TimeUnit.SECONDS);
@@ -67,19 +64,20 @@ class ParallelExecutionIT {
                 .build()
         );
 
-        // Verify RM tracks only this test's resource, not resources from parallel threads
-        List<HasMetadata> tracked = resourceManager.getCurrentResources();
-        LOGGER.info("Tracked resources for alpha test: {}", resourceNames(tracked));
+        // Verify RM tracks only this test's non-namespace resources, not resources from parallel threads
+        List<HasMetadata> trackedNonNs = nonNamespaceResources(resourceManager.getCurrentResources());
+        LOGGER.info("Tracked non-namespace resources for alpha test: {}", resourceNames(trackedNonNs));
 
-        assertEquals(1, tracked.size(),
-            "RM should track exactly 1 resource for this test, but found: " + resourceNames(tracked));
-        assertEquals("config-alpha", tracked.get(0).getMetadata().getName());
-        assertEquals(nsName, tracked.get(0).getMetadata().getNamespace());
+        assertEquals(1, trackedNonNs.size(),
+            "RM should track exactly 1 non-namespace resource for this test, but found: "
+                + resourceNames(trackedNonNs));
+        assertEquals("config-alpha", trackedNonNs.get(0).getMetadata().getName());
+        assertEquals(nsName, trackedNonNs.get(0).getMetadata().getNamespace());
     }
 
     @Test
     void testConcurrentResourceCreationInBravo(
-            @InjectNamespace(name = "parallel-ns-bravo") Namespace ns) throws InterruptedException {
+            @MethodNamespace(prefix = "parallel-bravo") Namespace ns) throws InterruptedException {
         threadNames.add(Thread.currentThread().getName());
         allMethodsStarted.countDown();
         allMethodsStarted.await(30, TimeUnit.SECONDS);
@@ -108,14 +106,15 @@ class ParallelExecutionIT {
                 .build()
         );
 
-        // Verify RM tracks only this test's resources
-        List<HasMetadata> tracked = resourceManager.getCurrentResources();
-        LOGGER.info("Tracked resources for bravo test: {}", resourceNames(tracked));
+        // Verify RM tracks only this test's non-namespace resources
+        List<HasMetadata> trackedNonNs = nonNamespaceResources(resourceManager.getCurrentResources());
+        LOGGER.info("Tracked non-namespace resources for bravo test: {}", resourceNames(trackedNonNs));
 
-        assertEquals(2, tracked.size(),
-            "RM should track exactly 2 resources for this test, but found: " + resourceNames(tracked));
+        assertEquals(2, trackedNonNs.size(),
+            "RM should track exactly 2 non-namespace resources for this test, but found: "
+                + resourceNames(trackedNonNs));
 
-        List<String> names = resourceNames(tracked);
+        List<String> names = resourceNames(trackedNonNs);
         assertTrue(names.contains("config-bravo-1"),
             "RM should track config-bravo-1");
         assertTrue(names.contains("config-bravo-2"),
@@ -126,7 +125,7 @@ class ParallelExecutionIT {
 
     @Test
     void testConcurrentResourceCreationInCharlie(
-            @InjectNamespace(name = "parallel-ns-charlie") Namespace ns) throws InterruptedException {
+            @MethodNamespace(prefix = "parallel-charlie") Namespace ns) throws InterruptedException {
         threadNames.add(Thread.currentThread().getName());
         allMethodsStarted.countDown();
         allMethodsStarted.await(30, TimeUnit.SECONDS);
@@ -144,18 +143,25 @@ class ParallelExecutionIT {
                 .build()
         );
 
-        // Verify RM tracks only this test's resource
-        List<HasMetadata> tracked = resourceManager.getCurrentResources();
-        LOGGER.info("Tracked resources for charlie test: {}", resourceNames(tracked));
+        // Verify RM tracks only this test's non-namespace resource
+        List<HasMetadata> trackedNonNs = nonNamespaceResources(resourceManager.getCurrentResources());
+        LOGGER.info("Tracked non-namespace resources for charlie test: {}", resourceNames(trackedNonNs));
 
-        assertEquals(1, tracked.size(),
-            "RM should track exactly 1 resource for this test, but found: " + resourceNames(tracked));
-        assertEquals("config-charlie", tracked.get(0).getMetadata().getName());
+        assertEquals(1, trackedNonNs.size(),
+            "RM should track exactly 1 non-namespace resource for this test, but found: "
+                + resourceNames(trackedNonNs));
+        assertEquals("config-charlie", trackedNonNs.get(0).getMetadata().getName());
 
         // Verify actual parallelism occurred across all methods
         LOGGER.info("Threads used across all parallel methods: {}", threadNames);
         assertTrue(threadNames.size() > 1,
             "Expected multiple threads but got: " + threadNames);
+    }
+
+    private List<HasMetadata> nonNamespaceResources(List<HasMetadata> resources) {
+        return resources.stream()
+            .filter(r -> !(r instanceof Namespace))
+            .toList();
     }
 
     private List<String> resourceNames(List<HasMetadata> resources) {

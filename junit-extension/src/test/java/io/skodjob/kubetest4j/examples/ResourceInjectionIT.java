@@ -5,6 +5,7 @@
 package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.skodjob.kubetest4j.clients.KubeClient;
@@ -12,6 +13,7 @@ import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResource;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
@@ -27,12 +29,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @KubernetesTest(
-    namespaces = {"resource-injection-test"},
     cleanup = CleanupStrategy.AUTOMATIC,
     storeYaml = true,
     yamlStorePath = "target/test-yamls"
 )
 class ResourceInjectionIT {
+
+    @ClassNamespace(name = "resource-injection-test")
+    static Namespace resourceInjectionNs;
 
     @InjectResource("test-deployment-2.yaml")
     Deployment deployment;

@@ -179,12 +179,9 @@ class ContextStoreHelperTest {
         void shouldPutAndGetTestConfig() {
             // Given
             TestConfig testConfig = new TestConfig(
-                List.of("test-ns"),
                 CleanupStrategy.AUTOMATIC,
                 false,
                 "",
-                List.of(),
-                List.of(),
                 "#",
                 76,
                 false,
@@ -192,7 +189,6 @@ class ContextStoreHelperTest {
                 "",
                 false,
                 List.of("pods"),
-                List.of(),
                 List.of()
             );
 

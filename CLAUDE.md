@@ -67,13 +67,15 @@ Abstraction for kubectl/oc CLI operations with fluent API.
 
 ### JUnit Extension (`junit-extension/.../KubernetesTestExtension.java`)
 `@KubernetesTest` annotation configures:
-- `namespaces` - auto-create test namespaces
 - `cleanup` - AUTOMATIC or MANUAL
 - `collectLogs` / `logCollectionStrategy` - log collection on failure
-- `additionalKubeContexts` - multi-cluster testing
 - `storeYaml` / `yamlStorePath` - persist created resource YAMLs
 
-Injection annotations: `@InjectKubeClient`, `@InjectCmdKubeClient`, `@InjectResourceManager`, `@InjectNamespaces`, `@InjectNamespace(name="...")`, `@InjectResource(value="...", waitForReady=true)`. All support `kubeContext` parameter for multi-context.
+Namespace annotations (on fields, not in `@KubernetesTest`):
+- `@ClassNamespace(name="...", labels={}, annotations={}, kubeContext="")` - class-level (static fields), created in beforeAll, deleted in afterAll. Existing namespaces are protected (used but never deleted).
+- `@MethodNamespace(prefix="...", labels={}, annotations={}, kubeContext="")` - per-test-method (instance fields/parameters), created in beforeEach, cleaned up via KRM LIFO stack.
+
+Injection annotations: `@InjectKubeClient`, `@InjectCmdKubeClient`, `@InjectResourceManager`, `@InjectResource(value="...", waitForReady=true)`. All support `kubeContext` parameter for multi-context.
 
 ### Wait Utility (`kubetest4j/.../wait/Wait.java`)
 Polling-based wait: `Wait.until(description, pollMs, timeoutMs, BooleanSupplier)`
@@ -287,6 +289,7 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.clients.cmdClient.KubeCmdClient;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
@@ -294,20 +297,23 @@ import io.skodjob.kubetest4j.annotations.InjectCmdKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @KubernetesTest(
-    namespaces = {"my-test-ns"},             // Auto-created and cleaned up
     cleanup = CleanupStrategy.AUTOMATIC,
-    namespaceLabels = {"test-type=example"},
     collectLogs = true,                      // Collect logs on failure
     logCollectionStrategy = LogCollectionStrategy.ON_FAILURE,
     logCollectionPath = "target/test-logs"
 )
 class MyFeatureIT {
+
+    @ClassNamespace(name = "my-test-ns",    // Class-level namespace
+        labels = {"test-type=example"})
+    static Namespace testNs;
 
     @InjectKubeClient                        // Field injection
     KubeClient client;
@@ -323,7 +329,7 @@ class MyFeatureIT {
         ConfigMap cm = new ConfigMapBuilder()
             .withNewMetadata()
             .withName("test-config")
-            .withNamespace("my-test-ns")     // Must match a declared namespace
+            .withNamespace("my-test-ns")
             .endMetadata()
             .addToData("key", "value")
             .build();
@@ -345,7 +351,7 @@ class MyFeatureIT {
 ```
 
 **When to use which:**
-- `@KubernetesTest` (junit-extension) - full-featured: auto namespace creation, DI, log collection, multi-context
+- `@KubernetesTest` (junit-extension) - full-featured: namespace annotations (`@ClassNamespace`, `@MethodNamespace`), DI, log collection, multi-context
 - `@ResourceManager` (core) - lightweight: just resource tracking and cleanup, no namespace management or DI
 
 See more examples in `junit-extension/src/test/java/io/skodjob/kubetest4j/examples/`.

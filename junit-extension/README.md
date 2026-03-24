@@ -1,11 +1,13 @@
 # Kubetest4j JUnit Extensions
 
-A comprehensive JUnit 6 extension for Kubernetes testing that provides declarative test configuration, multi-namespace support, comprehensive log collection, and automatic resource management.
+A comprehensive JUnit 6 extension for Kubernetes testing that provides declarative test configuration, namespace management via annotations, comprehensive log collection, and automatic resource management.
 
 ## Features
 
 - **Automatic Resource Management** - Configurable cleanup strategies and lifecycle management
+- **Declarative Namespaces** - `@ClassNamespace` for class-level and `@MethodNamespace` for per-test-method isolation
 - **Multi-Context Testing** - Test across different Kubernetes clusters simultaneously with context-specific namespaces and resources
+- **Namespace Protection** - Existing namespaces are used as-is and never deleted during cleanup
 - **Log Collection** - Automatic log collection with multiple strategies and exception handling
 - **Dependency Injection** - Inject Kubernetes clients, resource managers, and resources with context-specific support
 - **YAML Resource Loading** - Load and inject resources from YAML files with multi-context support
@@ -30,8 +32,11 @@ Add the JUnit 6 extension dependency to your project:
 ### 2. Basic Test Example
 
 ```java
-@KubernetesTest(namespaces = {"my-test"})
+@KubernetesTest
 class MyKubernetesTest {
+
+    @ClassNamespace(name = "my-test")
+    static Namespace testNs;
 
     @InjectKubeClient
     KubeClient client;
@@ -44,7 +49,7 @@ class MyKubernetesTest {
         Pod pod = new PodBuilder()
             .withNewMetadata()
             .withName("test-pod")
-            .withNamespace("my-test")  // Must specify namespace explicitly
+            .withNamespace("my-test")
             .endMetadata()
             .withNewSpec()
             .addNewContainer()
@@ -66,26 +71,38 @@ class MyKubernetesTest {
 }
 ```
 
-## Multi-Namespace Testing
+## Namespace Management
 
-Create and manage multiple namespaces for complex test scenarios. **Existing namespaces are automatically protected** - only namespaces created by the test will be deleted during cleanup:
+Namespaces are declared using field-level annotations on the test class, not inside `@KubernetesTest`.
 
-> **Design Note**: `@KubernetesTest` always uses your current/default Kubernetes context as the primary context. Use `additionalKubeContexts` to test across multiple clusters simultaneously.
+### @ClassNamespace — Class-Level Namespaces
+
+Class namespaces are created in `beforeAll` and deleted in `afterAll`. They are shared across all test methods in the class. Must be placed on **static** fields of type `Namespace`.
 
 ```java
-@KubernetesTest(
-    namespaces = {"frontend", "backend", "monitoring"},
-    cleanup = CleanupStrategy.AUTOMATIC
-)
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
 class MultiNamespaceTest {
+
+    @ClassNamespace(name = "frontend",
+        labels = {"env=test", "tier=frontend"},
+        annotations = {"description=Frontend test namespace"})
+    static Namespace frontendNs;
+
+    @ClassNamespace(name = "backend")
+    static Namespace backendNs;
+
+    @ClassNamespace(name = "monitoring")
+    static Namespace monitoringNs;
+
+    @InjectResourceManager
+    KubeResourceManager resourceManager;
 
     @Test
     void testCrossNamespaceNetworking() {
-        // Create service in backend namespace
         Service backendService = new ServiceBuilder()
             .withNewMetadata()
             .withName("api-service")
-            .withNamespace("backend")  // Explicit namespace required
+            .withNamespace("backend")
             .endMetadata()
             .withNewSpec()
             .withSelector(Map.of("app", "backend"))
@@ -97,9 +114,89 @@ class MultiNamespaceTest {
             .build();
 
         resourceManager.createResourceWithWait(backendService);
+    }
+}
+```
 
-        // Test connectivity from frontend namespace
-        // All three namespaces are automatically created and available
+### Namespace Protection
+
+**Existing namespaces are automatically protected.** If a namespace already exists on the cluster, it is used as-is and **never deleted** during cleanup. You can safely mix existing namespaces (like `default`) with test-created ones:
+
+```java
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
+class SafeNamespaceTest {
+
+    @ClassNamespace(name = "default")
+    static Namespace defaultNs;  // Protected — never deleted
+
+    @ClassNamespace(name = "my-test-ns")
+    static Namespace testNs;     // Created by test, deleted on cleanup
+}
+```
+
+### @MethodNamespace — Per-Test-Method Namespaces
+
+Create isolated namespaces per test method, similar to JUnit's `@TempDir`. Each test method gets its own fresh namespace. Ideal for parallel test execution.
+
+**Field injection:**
+```java
+@KubernetesTest
+class PerMethodNamespaceTest {
+
+    @MethodNamespace
+    Namespace testNs;  // Unique namespace created for each test method
+
+    @MethodNamespace(prefix = "kafka", labels = {"app=kafka"})
+    Namespace kafkaNs;  // Custom prefix and labels
+
+    @Test
+    void testOne() {
+        // testNs and kafkaNs are fresh namespaces, unique to this test method
+    }
+
+    @Test
+    void testTwo() {
+        // testNs and kafkaNs are different namespaces than in testOne()
+    }
+}
+```
+
+**Parameter injection:**
+```java
+@Test
+void testWithNamespace(@MethodNamespace Namespace ns) {
+    // ns is a fresh, unique namespace for this test invocation
+    assertNotNull(ns.getMetadata().getName());
+}
+
+@Test
+void testWithCustomPrefix(
+    @MethodNamespace(prefix = "app", annotations = {"purpose=testing"}) Namespace ns
+) {
+    assertTrue(ns.getMetadata().getName().startsWith("app-"));
+}
+```
+
+**Namespace naming:** Generated names follow the pattern `<prefix>-<methodName>-<index>`, truncated to 63 characters (DNS-1123). The index is a simple counter (0, 1, 2, ...) for each namespace within the same test method.
+
+**Coexistence:** `@ClassNamespace` and `@MethodNamespace` serve different purposes and can be used together:
+- `@ClassNamespace` — **class-level**, same namespace for all tests
+- `@MethodNamespace` — **method-level**, unique per test
+
+```java
+@KubernetesTest
+class MixedNamespaceTest {
+
+    @ClassNamespace(name = "shared")
+    static Namespace sharedNs;  // Same namespace for all tests
+
+    @MethodNamespace
+    Namespace isolatedNs;  // Different namespace per test method
+
+    @Test
+    void test() {
+        // sharedNs is the class-level "shared" namespace
+        // isolatedNs is a fresh namespace just for this test
     }
 }
 ```
@@ -116,9 +213,10 @@ The framework uses exception handlers to capture failures from **ANY** test life
 - `@AfterEach` method failures
 - `@AfterAll` method failures
 
+Log collection discovers namespaces automatically via the `kubetest4j.skodjob.io/log-collection=enabled` label, which is applied to all namespaces created by the framework.
+
 ```java
 @KubernetesTest(
-    namespaces = {"log-test"},
     collectLogs = true,
     logCollectionStrategy = LogCollectionStrategy.ON_FAILURE,
     logCollectionPath = "target/test-logs",
@@ -128,10 +226,13 @@ The framework uses exception handlers to capture failures from **ANY** test life
 )
 class LogCollectionTest {
 
+    @ClassNamespace(name = "log-test")
+    static Namespace logTestNs;
+
     @Test
     void testThatFails() {
         // If this test fails, logs will be automatically collected
-        // from all configured namespaces and resources
+        // from all labeled namespaces
         throw new AssertionError("Demonstrating automatic log collection");
     }
 }
@@ -142,29 +243,6 @@ class LogCollectionTest {
 - **`ON_FAILURE`** - Collect logs only when tests fail (default)
 - **`AFTER_EACH`** - Collect logs after each test method (success or failure)
 
-### Configurable Log Collection
-
-```java
-@KubernetesTest(
-    namespaces = {"comprehensive-test"},
-
-    // ===== Log Collection Configuration =====
-    collectLogs = true,
-    logCollectionStrategy = LogCollectionStrategy.AFTER_EACH,
-    logCollectionPath = "target/test-logs/comprehensive",
-    collectPreviousLogs = true,  // Include previous container logs
-
-    // Specify which namespaced resources to collect
-    collectNamespacedResources = {
-        "pods", "services", "configmaps", "secrets",
-        "deployments", "replicasets", "daemonsets"
-    },
-
-    // Specify cluster-wide resources to collect
-    collectClusterWideResources = {"nodes", "persistentvolumes"}
-)
-```
-
 ## Annotations Reference
 
 ### @KubernetesTest
@@ -173,32 +251,14 @@ Main annotation to enable Kubernetes test features:
 
 ```java
 @KubernetesTest(
-    // Multi-namespace support
-    namespaces = {"app", "monitoring"},     // Namespaces to create/use
-
     // Resource management
     cleanup = CleanupStrategy.AUTOMATIC,  // Cleanup strategy
     storeYaml = true,                      // Store resource YAMLs
     yamlStorePath = "target/yamls",        // YAML storage path
 
-    // Namespace metadata
-    namespaceLabels = {"env=test", "team=backend"},
-    namespaceAnnotations = {"description=Test namespace"},
-
     // Visual output
     visualSeparatorChar = "#",             // Separator character
     visualSeparatorLength = 76,            // Separator length
-
-    // ===== Additional Kube Contexts =====
-    additionalKubeContexts = {
-        @KubernetesTest.AdditionalKubeContext(
-            name = "staging",                      // Additional context name
-            namespaces = {"stg-app", "stg-db"},    // Context-specific namespaces
-            namespaceLabels = {"env=staging"},     // Context-specific namespace labels
-            namespaceAnnotations = {"stage=stg"}, // Context-specific namespace annotations
-            cleanup = CleanupStrategy.AUTOMATIC   // Context-specific cleanup strategy
-        )
-    },
 
     // ===== Log Collection =====
     collectLogs = true,
@@ -208,6 +268,44 @@ Main annotation to enable Kubernetes test features:
     collectNamespacedResources = {"pods", "services"},
     collectClusterWideResources = {"nodes"}
 )
+```
+
+### @ClassNamespace
+
+Declare class-level namespaces on static fields:
+
+```java
+@ClassNamespace(name = "my-ns")
+static Namespace ns;
+
+@ClassNamespace(name = "labeled-ns",
+    labels = {"env=test", "team=backend"},
+    annotations = {"description=Test namespace"})
+static Namespace labeledNs;
+
+// Multi-context support
+@ClassNamespace(name = "stg-app", kubeContext = "staging")
+static Namespace stagingNs;
+```
+
+### @MethodNamespace
+
+Declare per-test-method namespaces on instance fields or parameters:
+
+```java
+@MethodNamespace
+Namespace testNs;
+
+@MethodNamespace(prefix = "kafka", labels = {"app=kafka"})
+Namespace kafkaNs;
+
+// Multi-context support
+@MethodNamespace(kubeContext = "staging")
+Namespace stagingTestNs;
+
+// Parameter injection
+@Test
+void test(@MethodNamespace(prefix = "app") Namespace ns) { ... }
 ```
 
 ### @InjectKubeClient
@@ -222,16 +320,12 @@ KubeClient client;
 @InjectKubeClient(kubeContext = "staging")
 KubeClient stagingClient;
 
-@InjectKubeClient(kubeContext = "production")
-KubeClient productionClient;
-
 @Test
 void testWithClient(
     @InjectKubeClient KubeClient client,
     @InjectKubeClient(kubeContext = "staging") KubeClient stagingClient
 ) {
     // Both field and parameter injection work
-    // Both primary and kubeContext-specific injection work
 }
 ```
 
@@ -250,7 +344,6 @@ KubeCmdClient<?> stagingCmdClient;
 @Test
 void testWithCmdClient() {
     cmdClient.exec("get", "pods", "-n", "my-namespace");
-    stagingCmdClient.exec("get", "pods", "-n", "stg-frontend");
 }
 ```
 
@@ -266,18 +359,13 @@ KubeResourceManager resourceManager;
 @InjectResourceManager(kubeContext = "staging")
 KubeResourceManager stagingResourceManager;
 
-@InjectResourceManager(kubeContext = "production")
-KubeResourceManager productionResourceManager;
-
 @Test
 void testResourceLifecycle() {
-    // Primary kubeContext
+    // Primary context
     resourceManager.createResourceWithWait(myResource);
 
     // Context-specific resource management - truly isolated instances
     stagingResourceManager.createResourceWithWait(stagingResource);
-    productionResourceManager.createResourceWithWait(productionResource);
-    // Each manager operates on its own context simultaneously
 }
 ```
 
@@ -292,72 +380,6 @@ KubeResourceManager stagingMgr = KubeResourceManager.getForContext("staging"); /
 KubeResourceManager prodMgr = KubeResourceManager.getForContext("production"); // Production context
 
 // All instances can operate simultaneously without conflicts
-// No more ThreadLocal context switching - true parallel execution
-```
-
-### @InjectNamespaces
-
-Inject a Map of Namespace objects corresponding to the namespaces defined in @KubernetesTest (key=namespace name, value=Namespace object):
-
-```java
-@InjectNamespaces
-Map<String, Namespace> namespaces;
-
-// Context-specific injection
-@InjectNamespaces(kubeContext = "staging")
-Map<String, Namespace> stagingNamespaces;
-
-@InjectNamespaces(kubeContext = "production")
-Map<String, Namespace> productionNamespaces;
-
-@Test
-void testNamespaces(
-    @InjectNamespaces Map<String, Namespace> paramNamespaces,
-    @InjectNamespaces(kubeContext = "staging") Map<String, Namespace> paramStagingNamespaces
-) {
-    // Primary kubeContext namespaces
-    assertEquals(2, namespaces.size());
-    assertTrue(namespaces.containsKey("app"));
-    assertTrue(namespaces.containsKey("monitoring"));
-
-    // Staging kubeContext namespaces
-    assertEquals(2, stagingNamespaces.size());
-    assertTrue(stagingNamespaces.containsKey("stg-frontend"));
-    assertTrue(stagingNamespaces.containsKey("stg-backend"));
-}
-```
-
-### @InjectNamespace
-
-Inject a specific Namespace object by name:
-
-```java
-@InjectNamespace(name = "app")
-Namespace appNamespace;
-
-@InjectNamespace(name = "monitoring")
-Namespace monitoringNamespace;
-
-// Context-specific injection
-@InjectNamespace(kubeContext = "staging", name = "stg-frontend")
-Namespace stagingFrontendNamespace;
-
-@InjectNamespace(kubeContext = "production", name = "prod-api")
-Namespace productionApiNamespace;
-
-@Test
-void testSpecificNamespace(
-    @InjectNamespace(name = "app") Namespace paramAppNamespace,
-    @InjectNamespace(kubeContext = "staging", name = "stg-backend") Namespace paramStagingBackendNamespace
-) {
-    // Primary kubeContext namespaces
-    assertEquals("app", appNamespace.getMetadata().getName());
-    assertEquals("monitoring", monitoringNamespace.getMetadata().getName());
-
-    // Context-specific namespaces
-    assertEquals("stg-frontend", stagingFrontendNamespace.getMetadata().getName());
-    assertEquals("prod-api", productionApiNamespace.getMetadata().getName());
-}
 ```
 
 ### @InjectResource
@@ -378,16 +400,11 @@ Service selectedService;
 @InjectResource(kubeContext = "staging", value = "staging-deployment.yaml")
 Deployment stagingDeployment;
 
-@InjectResource(kubeContext = "production", value = "prod-service.yaml", waitForReady = true)
-Service productionService;
-
 @Test
 void testResourceInjection(
     @InjectResource(kubeContext = "staging", value = "staging-config.yaml") ConfigMap stagingConfig
 ) {
-    // Resources are automatically deployed to their respective contexts
     assertNotNull(stagingConfig);
-    assertEquals("stg-frontend", stagingConfig.getMetadata().getNamespace());
 }
 ```
 
@@ -406,131 +423,38 @@ Control when resources are cleaned up:
 
 ```java
 @KubernetesTest(
-    namespaces = {"cleanup-test"},
     cleanup = CleanupStrategy.MANUAL  // No automatic cleanup
 )
 ```
 
-## Resource Injection from YAML
-
-Load and apply resources from YAML files automatically:
-
-```yaml
-# test-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: test-app
-  namespace: my-test  # Namespace must be specified!
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: test-app
-  template:
-    metadata:
-      labels:
-        app: test-app
-    spec:
-      containers:
-      - name: app
-        image: nginx:latest
-```
-
-```java
-@KubernetesTest(namespaces = {"my-test"})
-class ResourceTest {
-
-    @InjectResource("test-deployment.yaml")
-    Deployment deployment; // Loaded from test classpath and automatically applied
-
-    @InjectResource(value = "test-manifest.yaml", type = Service.class, name = "test-service")
-    Service service; // Selected from a multi-document manifest
-
-    @Test
-    void testDeployment() {
-        assertEquals(2, deployment.getSpec().getReplicas());
-        assertEquals("test-service", service.getMetadata().getName());
-        // Both manifest resources are already running in the cluster
-    }
-}
-```
-
 ## Advanced Multi-Context Testing
 
-### Single Context Testing
-
-Test against the default Kubernetes context:
+Test across multiple Kubernetes clusters simultaneously using `kubeContext` on namespace and injection annotations:
 
 ```java
 @KubernetesTest(
-    namespaces = {"staging-test"}
-)
-class DefaultContextTest {
-    // Tests run against current/default Kubernetes context
-    // No additional context configuration needed
-}
-```
-
-To test against different clusters, configure your `kubectl` context or use additional contexts:
-
-```java
-@KubernetesTest(
-    namespaces = {"local-test"},
-    additionalKubeContexts = {
-        @KubernetesTest.AdditionalKubeContext(
-            name = "staging",
-            namespaces = {"stg-test"}
-        )
-    }
-)
-class MultiClusterTest {
-    @Test
-    void testDefaultContext(@InjectKubeClient KubeClient defaultClient) {
-        // Tests against current context
-    }
-
-    @Test
-    void testStagingContext(@InjectKubeClient(kubeContext = "staging") KubeClient stagingClient) {
-        // Tests against staging context
-    }
-}
-```
-
-### Multi-Context Testing (Advanced)
-
-Test across multiple Kubernetes clusters simultaneously with context-specific namespaces:
-
-```java
-@KubernetesTest(
-    // Primary context configuration (uses default/current kubeconfig context)
-    namespaces = {"local-test", "local-monitoring"},
     storeYaml = true,
-    yamlStorePath = "target/test-yamls",
-
-    // Additional context configuration
-    additionalKubeContexts = {
-        @KubernetesTest.AdditionalKubeContext(
-            name = "staging",
-            namespaces = {"stg-frontend", "stg-backend"},
-            namespaceLabels = {"environment=staging", "tier=application"},
-            cleanup = CleanupStrategy.AUTOMATIC
-        ),
-        @KubernetesTest.AdditionalKubeContext(
-            name = "production",
-            namespaces = {"prod-api", "prod-cache"},
-            namespaceLabels = {"environment=production"}
-        ),
-        @KubernetesTest.AdditionalKubeContext(
-            name = "development",
-            namespaces = {"dev-experimental"},
-            namespaceLabels = {"team=platform", "purpose=testing"}
-        )
-    }
+    yamlStorePath = "target/test-yamls"
 )
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MultiContextTest {
 
-    // Primary kubeContext injections
+    // Default context namespaces
+    @ClassNamespace(name = "local-test",
+        labels = {"environment=local"})
+    static Namespace localTestNs;
+
+    // Staging context namespaces
+    @ClassNamespace(name = "stg-frontend", kubeContext = "staging",
+        labels = {"environment=staging", "tier=application"})
+    static Namespace stagingFrontendNs;
+
+    // Production context namespaces
+    @ClassNamespace(name = "prod-api", kubeContext = "production",
+        labels = {"environment=production"})
+    static Namespace productionApiNs;
+
+    // Default context injections
     @InjectKubeClient
     KubeClient defaultClient;
 
@@ -547,28 +471,19 @@ class MultiContextTest {
     @InjectKubeClient(kubeContext = "production")
     KubeClient productionClient;
 
-    // Context-specific namespace injections
-    @InjectNamespaces(kubeContext = "staging")
-    Map<String, Namespace> stagingNamespaces;
-
-    @InjectNamespace(kubeContext = "staging", name = "stg-frontend")
-    Namespace stagingFrontendNamespace;
-
     @Test
     void testCrossContextOperations() {
-        // Create resources in different contexts
-
-        // Default kubeContext
+        // Default context
         ConfigMap defaultConfig = new ConfigMapBuilder()
             .withNewMetadata()
-                .withName("multi-kubeContext-config")
+                .withName("multi-context-config")
                 .withNamespace("local-test")
             .endMetadata()
             .addToData("environment", "local")
             .build();
         defaultResourceManager.createResourceWithoutWait(defaultConfig);
 
-        // Staging kubeContext
+        // Staging context
         Pod stagingPod = new PodBuilder()
             .withNewMetadata()
                 .withName("staging-test-pod")
@@ -582,19 +497,6 @@ class MultiContextTest {
             .endSpec()
             .build();
         stagingResourceManager.createResourceWithWait(stagingPod);
-
-        // Verify resources exist in their respective contexts
-        assertNotNull(defaultClient.getClient()
-            .configMaps()
-            .inNamespace("local-test")
-            .withName("multi-kubeContext-config")
-            .get());
-
-        assertNotNull(stagingClient.getClient()
-            .pods()
-            .inNamespace("stg-frontend")
-            .withName("staging-test-pod")
-            .get());
     }
 
     @Test
@@ -602,9 +504,7 @@ class MultiContextTest {
         @InjectResource(kubeContext = "staging", value = "deployment.yaml")
         Deployment stagingDeployment
     ) {
-        // Resource is automatically deployed to staging kubeContext
         assertNotNull(stagingDeployment);
-        assertEquals("stg-frontend", stagingDeployment.getMetadata().getNamespace());
     }
 }
 ```
@@ -613,24 +513,21 @@ class MultiContextTest {
 
 Configure contexts using environment variables:
 ```bash
-# Default kubeContext
+# Default context
 KUBE_URL=https://api.default:6443
 KUBE_TOKEN=default-token
 # or
 KUBECONFIG=/path/to/default.kubeconfig
 
-# Staging kubeContext
+# Staging context
 KUBE_URL_STAGING=https://api.staging:6443
 KUBE_TOKEN_STAGING=staging-token
 # or
 KUBECONFIG_STAGING=/path/to/staging.kubeconfig
 
-# Production kubeContext
+# Production context
 KUBE_URL_PRODUCTION=https://api.prod:6443
 KUBE_TOKEN_PRODUCTION=prod-token
-
-# Development kubeContext
-KUBECONFIG_DEVELOPMENT=/path/to/development.kubeconfig
 ```
 
 ## Visual Test Output
@@ -641,7 +538,6 @@ The framework provides visual separators for enhanced readability:
 ############################################################################
 TestClass io.example.MyKubernetesTest STARTED
 Setting up Kubernetes test environment for class: MyKubernetesTest
-Using namespaces: frontend, backend, monitoring
 ############################################################################
 Test io.example.MyKubernetesTest.testMethod STARTED
 ...
@@ -665,23 +561,16 @@ Automatically store deployed resources as YAML files for debugging and audit pur
 
 ```java
 @KubernetesTest(
-    namespaces = {"yaml-test"},
-    storeYaml = true,                      // Enable YAML storage
-    yamlStorePath = "target/test-yamls",   // Storage directory (default: target/test-yamls)
-
-    // Additional contexts for YAML storage
-    additionalKubeContexts = {
-        @KubernetesTest.AdditionalKubeContext(
-            name = "staging",
-            namespaces = {"stg-app"}
-        )
-    }
+    storeYaml = true,
+    yamlStorePath = "target/test-yamls"
 )
 class YamlStorageTest {
 
+    @ClassNamespace(name = "yaml-test")
+    static Namespace yamlTestNs;
+
     @Test
     void testYamlStorage() {
-        // Create resources - they will be automatically stored as YAML files
         ConfigMap config = new ConfigMapBuilder()
             .withNewMetadata()
             .withName("test-config")
@@ -694,15 +583,6 @@ class YamlStorageTest {
 
         // YAML file will be stored at:
         // target/test-yamls/test-files/primary/YamlStorageTest/testYamlStorage/ConfigMap-yaml-test-test-config.yaml
-    }
-
-    @Test
-    void testMultiContextYamlStorage(
-        @InjectResource(kubeContext = "staging", value = "staging-app.yaml")
-        Deployment stagingApp
-    ) {
-        // Multi-kubeContext resources are stored in separate directories:
-        // target/test-yamls/test-files/staging/YamlStorageTest/testMultiContextYamlStorage/Deployment-stg-app-staging-app.yaml
     }
 }
 ```
@@ -719,7 +599,7 @@ target/test-yamls/
 │   │       ├── before-all/         # Resources created in @BeforeAll
 │   │       ├── testMethod/         # Resources created in test method
 │   │       └── after-each/         # Resources created in @AfterEach
-│   ├── staging/                    # Staging kubeContext resources
+│   ├── staging/                    # Staging context resources
 │   │   └── TestClass/
 │   │       └── testMethod/
 │   └── production/                 # Production context resources
@@ -727,41 +607,21 @@ target/test-yamls/
 │           └── testMethod/
 ```
 
-## Advanced Features
-
-### Complex Namespace Configuration
-
-```java
-@KubernetesTest(
-    namespaces = {"app-frontend", "app-backend", "monitoring"},
-    namespaceLabels = {
-        "environment=test",
-        "team=backend",
-        "cost-center=engineering"
-    },
-    namespaceAnnotations = {
-        "description=Integration tests for microservices",
-        "contact=backend-team@company.com"
-    }
-)
-```
-
-### Per-Class vs Per-Method Lifecycle
+## Per-Class vs Per-Method Lifecycle
 
 ```java
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)  // Important for @BeforeAll injection
-@KubernetesTest(
-    namespaces = {"shared-resources"},
-    cleanup = CleanupStrategy.AUTOMATIC
-)
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
 class SharedResourceTest {
+
+    @ClassNamespace(name = "shared-resources")
+    static Namespace sharedNs;
 
     @InjectResourceManager
     KubeResourceManager resourceManager;
 
     @BeforeAll
     void setupSharedResources() {
-        // resourceManager is properly injected for PER_CLASS lifecycle
         ConfigMap sharedConfig = new ConfigMapBuilder()
             .withNewMetadata()
             .withName("shared-config")
@@ -775,33 +635,7 @@ class SharedResourceTest {
 }
 ```
 
-### Namespace Injection Example
-
-```java
-@KubernetesTest(
-    namespaces = {"app", "monitoring"},
-    namespaceLabels = {"environment=test", "team=backend"}
-)
-class NamespaceTest {
-
-    @InjectNamespaces
-    Map<String, Namespace> namespaces;
-
-    @Test
-    void testNamespaceAccess() {
-        assertEquals(2, namespaces.size());
-
-        // Access namespace metadata
-        assertEquals("app", namespaces.get("app").getMetadata().getName());
-        assertEquals("test", namespaces.get("app").getMetadata().getLabels().get("environment"));
-
-        assertEquals("monitoring", namespaces.get("monitoring").getMetadata().getName());
-        assertEquals("backend", namespaces.get("monitoring").getMetadata().getLabels().get("team"));
-    }
-}
-```
-
-### Parameter Injection
+## Parameter Injection
 
 All injection annotations work with test method parameters, including context-specific injections:
 
@@ -813,30 +647,12 @@ void testWithInjection(
     @InjectResourceManager KubeResourceManager resourceManager,
     @InjectResourceManager(kubeContext = "production") KubeResourceManager prodResourceManager,
     @InjectCmdKubeClient KubeCmdClient<?> cmdClient,
-    @InjectNamespaces Map<String, Namespace> namespaces,
-    @InjectNamespaces(kubeContext = "staging") Map<String, Namespace> stagingNamespaces,
-    @InjectNamespace(name = "app") Namespace appNamespace,
-    @InjectNamespace(kubeContext = "staging", name = "stg-frontend") Namespace stagingNamespace,
     @InjectResource("deployment.yaml") Deployment deployment,
-    @InjectResource(kubeContext = "staging", value = "staging-deployment.yaml") Deployment stagingDeployment
+    @InjectResource(kubeContext = "staging", value = "staging-deployment.yaml") Deployment stagingDeployment,
+    @MethodNamespace Namespace testNs,
+    @MethodNamespace(prefix = "app") Namespace appNs
 ) {
-
     // All parameters are automatically injected
-    assertNotNull(client);
-    assertNotNull(stagingClient);
-    assertNotNull(resourceManager);
-    assertNotNull(prodResourceManager);
-    assertNotNull(cmdClient);
-    assertNotNull(namespaces);
-    assertNotNull(stagingNamespaces);
-    assertNotNull(appNamespace);
-    assertNotNull(stagingNamespace);
-    assertNotNull(deployment);
-    assertNotNull(stagingDeployment);
-
-    // Verify kubeContext isolation
-    assertNotEquals(client, stagingClient);
-    assertNotEquals(resourceManager, prodResourceManager);
 }
 ```
 
@@ -844,9 +660,9 @@ void testWithInjection(
 
 The framework provides full thread safety support for parallel test execution:
 
-- **ThreadLocal Variables**: All ResourceManager context switching uses ThreadLocal variables
-- **Automatic Cleanup**: ThreadLocal variables are automatically cleaned up after each test class
-- **Context Isolation**: Each test thread maintains its own Kubernetes context stack
+- **Per-Context Instances**: Each Kubernetes context gets its own KubeResourceManager
+- **Automatic Cleanup**: Resources are tracked per-test and cleaned up automatically
+- **Context Isolation**: Each context operates independently without conflicts
 - **Parallel Execution**: Tests can run in parallel without context contamination
 
 ```java
@@ -866,34 +682,17 @@ The framework provides full thread safety support for parallel test execution:
 See comprehensive examples in the test directory:
 
 - **[`BasicKubernetesIT`](src/test/java/io/skodjob/kubetest4j/examples/BasicKubernetesIT.java)** - Basic usage, injection, and resource creation
-- **[`MultiNamespaceIT`](src/test/java/io/skodjob/kubetest4j/examples/MultiNamespaceIT.java)** - Multi-namespace testing patterns
-- **[`MultiContextIT`](src/test/java/io/skodjob/kubetest4j/examples/MultiContextIT.java)** - Advanced multi-context testing with context mappings
-- **[`NamespaceInjectionIT`](src/test/java/io/skodjob/kubetest4j/examples/NamespaceInjectionIT.java)** - Map-based namespace injection with @InjectNamespaces
-- **[`SingleNamespaceInjectionIT`](src/test/java/io/skodjob/kubetest4j/examples/SingleNamespaceInjectionIT.java)** - Single namespace injection patterns
+- **[`MultiNamespaceIT`](src/test/java/io/skodjob/kubetest4j/examples/MultiNamespaceIT.java)** - Multi-namespace testing with `@ClassNamespace`
+- **[`MultiContextIT`](src/test/java/io/skodjob/kubetest4j/examples/MultiContextIT.java)** - Advanced multi-context testing with `kubeContext`
+- **[`NamespaceInjectionIT`](src/test/java/io/skodjob/kubetest4j/examples/NamespaceInjectionIT.java)** - Multiple class namespace injection
 - **[`NamespaceProtectionIT`](src/test/java/io/skodjob/kubetest4j/examples/NamespaceProtectionIT.java)** - Namespace protection and safe cleanup demonstration
 - **[`AdvancedKubernetesIT`](src/test/java/io/skodjob/kubetest4j/examples/AdvancedKubernetesIT.java)** - Advanced features, PER_CLASS lifecycle, manual cleanup
 - **[`ResourceInjectionIT`](src/test/java/io/skodjob/kubetest4j/examples/ResourceInjectionIT.java)** - YAML resource injection patterns
+- **[`PerMethodNamespaceIT`](src/test/java/io/skodjob/kubetest4j/examples/PerMethodNamespaceIT.java)** - Per-method namespace isolation with `@MethodNamespace`
+- **[`ParallelExecutionIT`](src/test/java/io/skodjob/kubetest4j/examples/ParallelExecutionIT.java)** - Parallel test execution with `@MethodNamespace`
 - **[`LogCollectionIT`](src/test/java/io/skodjob/kubetest4j/examples/LogCollectionIT.java)** - Log collection strategies and configuration
 
 ## Important Notes
-
-### Namespace Protection and Management
-
-The framework **automatically protects existing namespaces** from deletion:
-
-- **Existing namespaces**: If a namespace already exists, it will be used as-is and **never deleted**
-- **Created namespaces**: Only namespaces created by the test will be deleted during cleanup
-- **Mixed scenarios**: You can safely mix existing namespaces (like `default`, `kube-system`) with test-created ones
-
-```java
-@KubernetesTest(
-    namespaces = {"default", "my-test-ns", "existing-ns"} // Mix of existing and new
-)
-class SafeNamespaceTest {
-    // 'default' and 'existing-ns' will be protected from deletion
-    // Only 'my-test-ns' will be deleted if it was created by the test
-}
-```
 
 ### Namespace Specification Required
 

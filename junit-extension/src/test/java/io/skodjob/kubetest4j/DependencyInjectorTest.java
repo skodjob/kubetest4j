@@ -4,16 +4,13 @@
  */
 package io.skodjob.kubetest4j;
 
-import io.fabric8.kubernetes.api.model.Namespace;
-import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceBuilder;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
+import io.skodjob.kubetest4j.annotations.MethodNamespace;
 import io.skodjob.kubetest4j.annotations.InjectCmdKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
-import io.skodjob.kubetest4j.annotations.InjectNamespace;
-import io.skodjob.kubetest4j.annotations.InjectNamespaces;
 import io.skodjob.kubetest4j.annotations.InjectResource;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.clients.KubeClient;
@@ -31,7 +28,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Parameter;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -72,11 +68,14 @@ class DependencyInjectorTest {
     @Mock
     private KubeCmdClient<?> kubeCmdClient;
 
+    @Mock
+    private MethodNamespaceService methodNamespaceService;
+
     private DependencyInjector dependencyInjector;
 
     @BeforeEach
     void setUp() {
-        dependencyInjector = new DependencyInjector(contextStoreHelper);
+        dependencyInjector = new DependencyInjector(contextStoreHelper, methodNamespaceService);
 
         // Setup common mocks
         lenient().when(parameterContext.getParameter()).thenReturn(parameter);
@@ -88,8 +87,7 @@ class DependencyInjectorTest {
         lenient().when(parameterContext.isAnnotated(InjectCmdKubeClient.class)).thenReturn(false);
         lenient().when(parameterContext.isAnnotated(InjectResourceManager.class)).thenReturn(false);
         lenient().when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(false);
-        lenient().when(parameterContext.isAnnotated(InjectNamespaces.class)).thenReturn(false);
-        lenient().when(parameterContext.isAnnotated(InjectNamespace.class)).thenReturn(false);
+        lenient().when(parameterContext.isAnnotated(MethodNamespace.class)).thenReturn(false);
     }
 
     @Nested
@@ -140,32 +138,6 @@ class DependencyInjectorTest {
         void shouldSupportInjectResourceParameter() {
             // Given
             when(parameterContext.isAnnotated(InjectResource.class)).thenReturn(true);
-
-            // When
-            boolean supports = dependencyInjector.supportsParameter(parameterContext);
-
-            // Then
-            assertTrue(supports);
-        }
-
-        @Test
-        @DisplayName("Should support InjectNamespaces parameter")
-        void shouldSupportInjectNamespacesParameter() {
-            // Given
-            when(parameterContext.isAnnotated(InjectNamespaces.class)).thenReturn(true);
-
-            // When
-            boolean supports = dependencyInjector.supportsParameter(parameterContext);
-
-            // Then
-            assertTrue(supports);
-        }
-
-        @Test
-        @DisplayName("Should support InjectNamespace parameter")
-        void shouldSupportInjectNamespaceParameter() {
-            // Given
-            when(parameterContext.isAnnotated(InjectNamespace.class)).thenReturn(true);
 
             // When
             boolean supports = dependencyInjector.supportsParameter(parameterContext);
@@ -232,44 +204,6 @@ class DependencyInjectorTest {
 
             // Then
             assertEquals(resourceManager, result);
-        }
-
-        @Test
-        @DisplayName("Should resolve InjectNamespaces parameter")
-        void shouldResolveInjectNamespacesParameter() {
-            // Given
-            InjectNamespaces annotation = createInjectNamespacesAnnotation("");
-            Map<String, Namespace> namespaces = Map.of("test-ns",
-                new NamespaceBuilder().withNewMetadata().withName("test-ns").endMetadata().build());
-
-            when(parameterContext.isAnnotated(InjectNamespaces.class)).thenReturn(true);
-            when(parameter.getAnnotation(InjectNamespaces.class)).thenReturn(annotation);
-            when(contextStoreHelper.getNamespaceObjects(extensionContext)).thenReturn(namespaces);
-
-            // When
-            Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
-
-            // Then
-            assertEquals(namespaces, result);
-        }
-
-        @Test
-        @DisplayName("Should resolve InjectNamespace parameter")
-        void shouldResolveInjectNamespaceParameter() {
-            // Given
-            InjectNamespace annotation = createInjectNamespaceAnnotation("test-ns", "");
-            Namespace namespace = new NamespaceBuilder().withNewMetadata().withName("test-ns").endMetadata().build();
-            Map<String, Namespace> namespaces = Map.of("test-ns", namespace);
-
-            when(parameterContext.isAnnotated(InjectNamespace.class)).thenReturn(true);
-            when(parameter.getAnnotation(InjectNamespace.class)).thenReturn(annotation);
-            when(contextStoreHelper.getNamespaceObjects(extensionContext)).thenReturn(namespaces);
-
-            // When
-            Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
-
-            // Then
-            assertEquals(namespace, result);
         }
 
         @Test
@@ -415,25 +349,6 @@ class DependencyInjectorTest {
         }
 
         @Test
-        @DisplayName("Should inject namespaces for specific context")
-        void shouldInjectNamespacesForSpecificContext() {
-            // Given
-            InjectNamespaces annotation = createInjectNamespacesAnnotation("staging");
-            Map<String, Namespace> namespaces = Map.of("stg-ns",
-                new NamespaceBuilder().withNewMetadata().withName("stg-ns").endMetadata().build());
-
-            when(parameterContext.isAnnotated(InjectNamespaces.class)).thenReturn(true);
-            when(parameter.getAnnotation(InjectNamespaces.class)).thenReturn(annotation);
-            when(contextStoreHelper.getNamespaceObjectsForContext(extensionContext, "staging")).thenReturn(namespaces);
-
-            // When
-            Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
-
-            // Then
-            assertEquals(namespaces, result);
-        }
-
-        @Test
         @DisplayName("Should throw exception when context manager not available")
         void shouldThrowExceptionWhenContextManagerNotAvailable() {
             // Given
@@ -453,39 +368,6 @@ class DependencyInjectorTest {
     @Nested
     @DisplayName("Error Handling Tests")
     class ErrorHandlingTests {
-
-        @Test
-        @DisplayName("Should throw exception for namespace not in test configuration")
-        void shouldThrowExceptionForNamespaceNotInTestConfiguration() {
-            // Given
-            InjectNamespace annotation = createInjectNamespaceAnnotation("nonexistent-ns", "");
-            Map<String, Namespace> namespaces = Map.of("test-ns",
-                new NamespaceBuilder().withNewMetadata().withName("test-ns").endMetadata().build());
-
-            when(parameterContext.isAnnotated(InjectNamespace.class)).thenReturn(true);
-            when(parameter.getAnnotation(InjectNamespace.class)).thenReturn(annotation);
-            when(contextStoreHelper.getNamespaceObjects(extensionContext)).thenReturn(namespaces);
-
-            // When & Then
-            RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> dependencyInjector.resolveParameter(parameterContext, extensionContext));
-            assertTrue(exception.getMessage().contains("Namespace 'nonexistent-ns' not found"));
-        }
-
-        @Test
-        @DisplayName("Should throw exception when namespaces not available")
-        void shouldThrowExceptionWhenNamespacesNotAvailable() {
-            // Given
-            InjectNamespaces annotation = createInjectNamespacesAnnotation("");
-            when(parameterContext.isAnnotated(InjectNamespaces.class)).thenReturn(true);
-            when(parameter.getAnnotation(InjectNamespaces.class)).thenReturn(annotation);
-            when(contextStoreHelper.getNamespaceObjects(extensionContext)).thenReturn(null);
-
-            // When & Then
-            RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> dependencyInjector.resolveParameter(parameterContext, extensionContext));
-            assertTrue(exception.getMessage().contains("Namespace objects not available for kubeContext: primary"));
-        }
 
         @Test
         @DisplayName("Should throw exception when InjectResource cannot select matching resource")
@@ -607,9 +489,6 @@ class DependencyInjectorTest {
 
         @InjectResourceManager
         KubeResourceManager resourceManager;
-
-        // Non-annotated field
-        String nonInjectable;
     }
 
     // Mock annotation creation methods
@@ -681,39 +560,6 @@ class DependencyInjectorTest {
             @Override
             public boolean waitForReady() {
                 return waitForReady;
-            }
-
-            @Override
-            public String kubeContext() {
-                return context;
-            }
-        };
-    }
-
-    private InjectNamespaces createInjectNamespacesAnnotation(String context) {
-        return new InjectNamespaces() {
-            @Override
-            public Class<? extends java.lang.annotation.Annotation> annotationType() {
-                return InjectNamespaces.class;
-            }
-
-            @Override
-            public String kubeContext() {
-                return context;
-            }
-        };
-    }
-
-    private InjectNamespace createInjectNamespaceAnnotation(String name, String context) {
-        return new InjectNamespace() {
-            @Override
-            public Class<? extends java.lang.annotation.Annotation> annotationType() {
-                return InjectNamespace.class;
-            }
-
-            @Override
-            public String name() {
-                return name;
             }
 
             @Override

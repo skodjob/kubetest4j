@@ -8,8 +8,6 @@ import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Manages test configuration creation and parsing.
@@ -46,7 +44,7 @@ class ConfigurationService {
             throw new IllegalStateException("@KubernetesTest annotation not found on test class");
         }
 
-        TestConfig testConfig = createTestConfig(context, testAnnotation);
+        TestConfig testConfig = createTestConfig(testAnnotation);
         contextStoreHelper.putTestConfig(context, testConfig);
         return testConfig;
     }
@@ -54,23 +52,11 @@ class ConfigurationService {
     /**
      * Creates a TestConfig from a @KubernetesTest annotation.
      */
-    public TestConfig createTestConfig(ExtensionContext context, KubernetesTest annotation) {
-        String[] namespaces = annotation.namespaces().length == 0 ?
-            new String[]{"default-test"} : annotation.namespaces();
-
-        // Convert additional kubeContexts
-        List<TestConfig.AdditionalKubeContextConfig> additionalKubeContexts = Arrays
-            .stream(annotation.additionalKubeContexts())
-            .map(TestConfig.AdditionalKubeContextConfig::fromAnnotation)
-            .collect(Collectors.toList());
-
+    public TestConfig createTestConfig(KubernetesTest annotation) {
         return new TestConfig(
-            Arrays.asList(namespaces),
             annotation.cleanup(),
             annotation.storeYaml(),
             annotation.yamlStorePath(),
-            Arrays.asList(annotation.namespaceLabels()),
-            Arrays.asList(annotation.namespaceAnnotations()),
             annotation.visualSeparatorChar(),
             annotation.visualSeparatorLength(),
             annotation.collectLogs(),
@@ -78,8 +64,7 @@ class ConfigurationService {
             annotation.logCollectionPath(),
             annotation.collectPreviousLogs(),
             Arrays.asList(annotation.collectNamespacedResources()),
-            Arrays.asList(annotation.collectClusterWideResources()),
-            additionalKubeContexts
+            Arrays.asList(annotation.collectClusterWideResources())
         );
     }
 

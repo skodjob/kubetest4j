@@ -6,10 +6,9 @@ package io.skodjob.kubetest4j;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Namespace;
+import io.skodjob.kubetest4j.annotations.MethodNamespace;
 import io.skodjob.kubetest4j.annotations.InjectCmdKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
-import io.skodjob.kubetest4j.annotations.InjectNamespace;
-import io.skodjob.kubetest4j.annotations.InjectNamespaces;
 import io.skodjob.kubetest4j.annotations.InjectResource;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.clients.KubeClient;
@@ -23,11 +22,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Handles all dependency injection for Kubernetes test components.
@@ -37,14 +36,18 @@ import java.util.Map;
 class DependencyInjector {
 
     private final ContextStoreHelper contextStoreHelper;
+    private final MethodNamespaceService methodNamespaceService;
 
     /**
-     * Creates a new DependencyInjector with the given kubeContext store helper.
+     * Creates a new DependencyInjector with the given dependencies.
      *
-     * @param contextStoreHelper provides access to extension kubeContext storage
+     * @param contextStoreHelper      provides access to extension kubeContext storage
+     * @param methodNamespaceService  provides method namespace resolution
      */
-    DependencyInjector(ContextStoreHelper contextStoreHelper) {
+    DependencyInjector(ContextStoreHelper contextStoreHelper,
+                       MethodNamespaceService methodNamespaceService) {
         this.contextStoreHelper = contextStoreHelper;
+        this.methodNamespaceService = methodNamespaceService;
     }
 
     // ===============================
@@ -59,8 +62,7 @@ class DependencyInjector {
             parameterContext.isAnnotated(InjectCmdKubeClient.class) ||
             parameterContext.isAnnotated(InjectResourceManager.class) ||
             parameterContext.isAnnotated(InjectResource.class) ||
-            parameterContext.isAnnotated(InjectNamespaces.class) ||
-            parameterContext.isAnnotated(InjectNamespace.class);
+            parameterContext.isAnnotated(MethodNamespace.class);
     }
 
     /**
@@ -72,7 +74,6 @@ class DependencyInjector {
         try {
             return resolveInjection(new ParameterInjectionSource(parameterContext), extensionContext);
         } catch (RuntimeException e) {
-            // Convert RuntimeException to ParameterResolutionException for parameter injection
             throw new ParameterResolutionException(e.getMessage(), e);
         }
     }
@@ -83,6 +84,8 @@ class DependencyInjector {
 
     /**
      * Injects all annotated fields in the test class.
+     * Static fields with @ClassNamespace are skipped here — they are injected
+     * directly by ClassNamespaceService during beforeAll.
      */
     public void injectTestClassFields(ExtensionContext context) {
         Object testInstance = context.getTestInstance().orElse(null);
@@ -92,6 +95,11 @@ class DependencyInjector {
 
         Field[] fields = context.getRequiredTestClass().getDeclaredFields();
         for (Field field : fields) {
+            // Skip static fields — @ClassNamespace static fields are handled by ClassNamespaceService
+            if (Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+
             try {
                 Object value = getInjectableValue(field, context);
                 if (value != null) {
@@ -122,8 +130,7 @@ class DependencyInjector {
             field.isAnnotationPresent(InjectCmdKubeClient.class) ||
             field.isAnnotationPresent(InjectResourceManager.class) ||
             field.isAnnotationPresent(InjectResource.class) ||
-            field.isAnnotationPresent(InjectNamespaces.class) ||
-            field.isAnnotationPresent(InjectNamespace.class);
+            field.isAnnotationPresent(MethodNamespace.class);
     }
 
     // ===============================
@@ -142,10 +149,8 @@ class DependencyInjector {
             return injectResourceManager(source.getAnnotation(InjectResourceManager.class), context);
         } else if (source.hasAnnotation(InjectResource.class)) {
             return injectResource(source.getAnnotation(InjectResource.class), source.getType(), context);
-        } else if (source.hasAnnotation(InjectNamespaces.class)) {
-            return injectNamespaces(source.getAnnotation(InjectNamespaces.class), context);
-        } else if (source.hasAnnotation(InjectNamespace.class)) {
-            return injectNamespace(source.getAnnotation(InjectNamespace.class), context);
+        } else if (source.hasAnnotation(MethodNamespace.class)) {
+            return injectMethodNamespace(source, context);
         }
 
         throw new RuntimeException("Cannot resolve injection for: " + source.getName());
@@ -269,38 +274,15 @@ class DependencyInjector {
     }
 
     /**
-     * Unified Namespaces injection logic.
+     * Unified MethodNamespace injection logic.
+     * Resolves a per-method namespace by injection source identity.
      */
-    private Map<String, Namespace> injectNamespaces(InjectNamespaces annotation, ExtensionContext context) {
-        String clusterContext = annotation.kubeContext();
-
-        Map<String, Namespace> namespaceObjects = getNamespaceObjectsForContext(context, clusterContext);
-        if (namespaceObjects == null) {
-            throw new RuntimeException("Namespace objects not available for kubeContext: " +
-                (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
-        }
-        return namespaceObjects;
-    }
-
-    /**
-     * Unified Namespace injection logic.
-     */
-    private Namespace injectNamespace(InjectNamespace annotation, ExtensionContext context) {
-        String namespaceName = annotation.name();
-        String clusterContext = annotation.kubeContext();
-
-        Map<String, Namespace> namespaceObjects = getNamespaceObjectsForContext(context, clusterContext);
-        if (namespaceObjects == null) {
-            throw new RuntimeException("Namespace objects not available for kubeContext: " +
-                (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
-        }
-
-        Namespace namespace = namespaceObjects.get(namespaceName);
+    private Namespace injectMethodNamespace(InjectionSource source, ExtensionContext context) {
+        Namespace namespace = methodNamespaceService.resolveMethodNamespace(context, source.getName());
         if (namespace == null) {
-            throw new RuntimeException("Namespace '" + namespaceName +
-                "' not found in test namespaces for kubeContext: " +
-                (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext) + ". " +
-                "Make sure it's defined in @KubernetesTest annotation.");
+            throw new RuntimeException(
+                "Method namespace not found for '" + source.getName() + "'. "
+                    + "Ensure @KubernetesTest is on the test class and the namespace was created.");
         }
         return namespace;
     }
@@ -311,17 +293,9 @@ class DependencyInjector {
 
     private KubeResourceManager getResourceManagerForContext(ExtensionContext context, String clusterContext) {
         if (clusterContext.isEmpty()) {
-            return contextStoreHelper.getResourceManager(context); // Primary kubeContext from beforeAll setup
+            return contextStoreHelper.getResourceManager(context);
         } else {
             return contextStoreHelper.getContextManager(context, clusterContext);
-        }
-    }
-
-    private Map<String, Namespace> getNamespaceObjectsForContext(ExtensionContext context, String clusterContext) {
-        if (clusterContext.isEmpty()) {
-            return contextStoreHelper.getNamespaceObjects(context);
-        } else {
-            return contextStoreHelper.getNamespaceObjectsForContext(context, clusterContext);
         }
     }
 

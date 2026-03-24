@@ -6,6 +6,7 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.skodjob.kubetest4j.clients.KubeClient;
@@ -15,6 +16,7 @@ import io.skodjob.kubetest4j.annotations.InjectCmdKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.Test;
 
@@ -26,16 +28,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * This test shows how to:
  * - Use @KubernetesTest annotation
  * - Inject KubeClient and KubeResourceManager
- * - Inject namespace information
+ * - Use @ClassNamespace for namespace management
  * - Create and manage resources
  */
-@KubernetesTest(
-    namespaces = {"basic-test"},
-    cleanup = CleanupStrategy.AUTOMATIC,
-    namespaceLabels = {"test-type=basic", "framework=test-frame"},
-    namespaceAnnotations = {"description=Basic test example"}
-)
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
 class BasicKubernetesIT {
+
+    @ClassNamespace(name = "basic-test",
+        labels = {"test-type=basic", "framework=test-frame"},
+        annotations = {"description=Basic test example"})
+    static Namespace basicTestNs;
 
     @InjectKubeClient
     KubeClient client;
@@ -51,6 +53,7 @@ class BasicKubernetesIT {
         // Verify injections work
         assertNotNull(client, "KubeClient should be injected");
         assertNotNull(resourceManager, "KubeResourceManager should be injected");
+        assertNotNull(basicTestNs, "ClassNamespace should be injected");
     }
 
     @Test

@@ -4,8 +4,6 @@
  */
 package io.skodjob.kubetest4j;
 
-import io.fabric8.kubernetes.api.model.Namespace;
-import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
@@ -23,10 +21,8 @@ import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import java.nio.file.Paths;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,7 +32,7 @@ import java.util.Map;
  * log collection.
  * <p>
  * Key features:
- * - Multi-namespace support with automatic labeling for log collection
+ * - Namespace management via {@code @ClassNamespace} (class-level) and {@code @MethodNamespace} (per-test)
  * - Comprehensive log collection via exception handlers (catches failures in ANY test phase)
  * - Automatic resource cleanup with configurable strategies
  * - Dependency injection for Kubernetes clients and resources
@@ -70,8 +66,14 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     // Exception handling
     private final ExceptionHandlerDelegate exceptionHandler;
 
-    // Namespace management
+    // Namespace auto-labeling for log collection
     private final NamespaceService namespaceService;
+
+    // Class namespace management (class-level, beforeAll/afterAll)
+    private final ClassNamespaceService classNamespaceService;
+
+    // Method namespace management (per-test-method, beforeEach/afterEach)
+    private final MethodNamespaceService methodNamespaceService;
 
     // Log collection management
     private final LogCollectionService logCollectionService;
@@ -92,10 +94,18 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         KubeResourceManager.get();
         this.contextStoreHelper = contextStoreHelper;
         this.configurationService = new ConfigurationService(contextStoreHelper);
-        this.dependencyInjector = new DependencyInjector(contextStoreHelper);
 
-        // Create namespace manager with multi-kubeContext provider
-        this.namespaceService = new NamespaceService(contextStoreHelper, this);
+        // Create namespace service (for auto-labeling only)
+        this.namespaceService = new NamespaceService();
+
+        // Create class namespace manager for class-level namespaces
+        this.classNamespaceService = new ClassNamespaceService(contextStoreHelper, this);
+
+        // Create method namespace manager for per-test-method namespaces
+        this.methodNamespaceService = new MethodNamespaceService(contextStoreHelper, this);
+
+        // Create dependency injector with namespace support
+        this.dependencyInjector = new DependencyInjector(contextStoreHelper, methodNamespaceService);
 
         // Create log collection manager with kubeContext provider
         this.logCollectionService = new LogCollectionService(contextStoreHelper, configurationService, this);
@@ -116,7 +126,6 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         TestConfig testConfig = configurationService.createAndStoreTestConfig(context);
 
         // Set up KubeResourceManager
-        // Get ResourceManager for the default context (primary test context)
         String contextId = KubeTestConstants.DEFAULT_CONTEXT_NAME;
         KubeResourceManager resourceManager = KubeResourceManager.getForContext(contextId);
 
@@ -136,8 +145,8 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
             namespaceService.setupNamespaceAutoLabeling(resourceManager);
         }
 
-        // Set up namespaces (this will trigger the auto-labeling callback)
-        namespaceService.setupNamespaces(context, testConfig, resourceManager);
+        // Create class namespaces declared via @ClassNamespace on static fields
+        classNamespaceService.createClassNamespaces(context);
 
         // Inject fields for PER_CLASS lifecycle tests that use @BeforeAll methods
         injectTestClassFields(context);
@@ -155,17 +164,8 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         // Handle cleanup by delegating to ResourceManager logic
         handleAutomaticCleanup(context, testConfig);
 
-        // Clean up created namespaces if any were created during the test
-        List<String> createdNamespaces = contextStoreHelper.getCreatedNamespaceNames(context);
-        if (createdNamespaces != null && !createdNamespaces.isEmpty()) {
-            namespaceService.cleanupNamespaces(context, testConfig);
-        }
-
-        // Clean up created namespaces from multi-kubeContext scenarios
-        cleanupMultiContextNamespaces(context, testConfig);
-
-        // Close all kubeContext closers (primary + multi-kubeContext)
-        cleanupAllContextClosers(context);
+        // Clean up class namespaces (only those created by the test)
+        classNamespaceService.cleanupClassNamespaces(context);
 
         // Clean up ThreadLocal variables to prevent thread reuse issues
         cleanupThreadLocalVariables(context);
@@ -186,7 +186,10 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
             resourceManager.setTestContext(context);
         }
 
-        // Inject fields into the current test instance
+        // Create method namespaces before field injection so they are available for @MethodNamespace
+        methodNamespaceService.createMethodNamespaces(context);
+
+        // Inject fields into the current test instance (includes @MethodNamespace fields)
         injectTestClassFields(context);
 
         logVisualSeparator(context);
@@ -214,6 +217,8 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         }
 
         // Handle cleanup by delegating to ResourceManager logic
+        // KRM's LIFO stack ensures correct deletion order:
+        // resources inside namespaces are deleted before the namespaces themselves
         handleAutomaticCleanup(context, testConfig);
 
         LOGGER.info("Test {}.{} {}", context.getRequiredTestClass().getName(),
@@ -232,7 +237,8 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     }
 
     @Override
-    public void handleBeforeAllMethodExecutionException(@NonNull ExtensionContext context, @NonNull Throwable throwable)
+    public void handleBeforeAllMethodExecutionException(@NonNull ExtensionContext context,
+                                                         @NonNull Throwable throwable)
         throws Throwable {
         exceptionHandler.handleBeforeAllMethodExecutionException(context, throwable);
     }
@@ -245,13 +251,15 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     }
 
     @Override
-    public void handleAfterEachMethodExecutionException(@NonNull ExtensionContext context, @NonNull Throwable throwable)
+    public void handleAfterEachMethodExecutionException(@NonNull ExtensionContext context,
+                                                         @NonNull Throwable throwable)
         throws Throwable {
         exceptionHandler.handleAfterEachMethodExecutionException(context, throwable);
     }
 
     @Override
-    public void handleAfterAllMethodExecutionException(@NonNull ExtensionContext context, @NonNull Throwable throwable)
+    public void handleAfterAllMethodExecutionException(@NonNull ExtensionContext context,
+                                                        @NonNull Throwable throwable)
         throws Throwable {
         exceptionHandler.handleAfterAllMethodExecutionException(context, throwable);
     }
@@ -304,16 +312,6 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     }
 
     /**
-     * Cleans up all kubeContext closers to prevent resource leaks.
-     * This includes the primary kubeContext closer and all multi-kubeContext closers.
-     */
-    private void cleanupAllContextClosers(ExtensionContext context) {
-        // Context closers are no longer needed with the new per-context singleton approach.
-        // KubeResourceManager instances are now context-specific and don't require ThreadLocal switching.
-        LOGGER.debug("Skipping context closer cleanup - not needed with per-kubeContext singleton architecture");
-    }
-
-    /**
      * Cleans up ThreadLocal variables in KubeResourceManager to prevent thread reuse issues.
      * This is critical for parallel test execution and thread pool reuse.
      */
@@ -346,53 +344,6 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         }
     }
 
-    /**
-     * Cleans up namespaces created in multi-kubeContext scenarios.
-     * This ensures that kubeContext-specific namespaces are properly deleted.
-     */
-    private void cleanupMultiContextNamespaces(ExtensionContext context, TestConfig testConfig) {
-        try {
-            // Get all kubeContext managers to find contexts that had namespaces created
-            Map<String, KubeResourceManager> contextManagers = contextStoreHelper.getContextManagers(context);
-            if (contextManagers == null || contextManagers.isEmpty()) {
-                LOGGER.debug("Skipping multi-kubeContext namespace cleanup - no kubeContext managers found");
-                return;
-            }
-
-            // Clean up namespaces for each kubeContext that created namespaces
-            for (String clusterContext : contextManagers.keySet()) {
-                List<String> contextCreatedNamespaces =
-                    contextStoreHelper.getOrCreateCreatedNamespacesForContext(context, clusterContext);
-
-                if (contextCreatedNamespaces != null && !contextCreatedNamespaces.isEmpty()) {
-                    LOGGER.info("Deleting {} namespaces for kubeContext {}: {}",
-                        contextCreatedNamespaces.size(), clusterContext,
-                        String.join(", ", contextCreatedNamespaces));
-
-                    KubeResourceManager contextManager = contextManagers.get(clusterContext);
-                    try {
-                        for (String namespaceName : contextCreatedNamespaces) {
-                            Namespace namespace = new NamespaceBuilder()
-                                .withNewMetadata()
-                                .withName(namespaceName)
-                                .endMetadata()
-                                .build();
-                            LoggerUtils.logResource("Deleting", Level.DEBUG, namespace);
-                            contextManager.deleteResourceWithWait(namespace);
-                        }
-                        LOGGER.info("Deleted {} namespaces for kubeContext {}",
-                            contextCreatedNamespaces.size(), clusterContext);
-                    } catch (Exception e) {
-                        LOGGER.warn("Failed to delete namespaces for kubeContext {}: {}",
-                            clusterContext, e.getMessage());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.warn("Failed to clean up multi-kubeContext namespaces: {}", e.getMessage(), e);
-        }
-    }
-
     // ===============================
     // Multi-Context Support Methods (MultiKubeContextProvider Implementation)
     // ===============================
@@ -407,7 +358,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
         // Get or create resource manager for this kubeContext
         return contextManagers.computeIfAbsent(kubeContext, ctx -> {
-            LOGGER.info("Creating ResourceManager for kubeContext {}", ctx);
+            LOGGER.debug("Creating ResourceManager for kubeContext {}", ctx);
 
             try {
                 // Get context-specific ResourceManager instance (per-context singleton)
@@ -430,23 +381,6 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
                 throw new RuntimeException("Failed to create ResourceManager for kubeContext: " + ctx, e);
             }
         });
-    }
-
-    @Override
-    public void storeNamespaceObjectsForKubeContext(ExtensionContext context, String kubeContext,
-                                                    Map<String, Namespace> namespaceObjects) {
-        contextStoreHelper.putNamespaceObjectsForContext(context, kubeContext, namespaceObjects);
-    }
-
-    @Override
-    public List<String> getOrCreateCreatedNamespacesForKubeContext(ExtensionContext context, String kubeContext) {
-        return contextStoreHelper.getOrCreateCreatedNamespacesForContext(context, kubeContext);
-    }
-
-    @Override
-    public Map<String, Namespace> getOrCreateNamespaceObjectsForKubeContext(ExtensionContext context,
-                                                                            String kubeContext) {
-        return contextStoreHelper.getOrCreateNamespaceObjectsForContext(context, kubeContext);
     }
 
     // ===============================
