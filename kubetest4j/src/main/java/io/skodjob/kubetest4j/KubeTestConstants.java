@@ -80,4 +80,9 @@ public final class KubeTestConstants {
      * Default cluster context name
      */
     public static final String DEFAULT_CONTEXT_NAME = "primary";
+
+    /**
+     * Default maximum number of concurrent async operations (create/delete) against the Kubernetes API.
+     */
+    public static final int DEFAULT_MAX_CONCURRENT_OPERATIONS = 50;
 }

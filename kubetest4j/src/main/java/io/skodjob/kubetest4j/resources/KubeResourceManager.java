@@ -4,34 +4,6 @@
  */
 package io.skodjob.kubetest4j.resources;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Stack;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-
 import io.fabric8.kubernetes.api.model.Endpoints;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Node;
@@ -56,6 +28,35 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Stack;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -127,13 +128,23 @@ public final class KubeResourceManager {
     // Lock used during store of resources that are being created by KubeResourceManager
     private static final Object CREATION_LOCK = new Object();
 
+    // Configured maximum number of concurrent async operations.
+    private static volatile int maxConcurrentOperations =
+        KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS;
+
+
+    // Semaphore controlling the maximum number of concurrent async operations (create/delete)
+    private static volatile Semaphore operationSemaphore =
+        new Semaphore(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS);
+
     /**
      * Stores connected kube clients for context
      *
      * @param kubeClient kube client
      * @param cmdClient  cmd client
      */
-    private record ClusterContext<K extends KubeCmdClient<K>>(KubeClient kubeClient, K cmdClient) { }
+    private record ClusterContext<K extends KubeCmdClient<K>>(KubeClient kubeClient, K cmdClient) {
+    }
 
     private KubeResourceManager(String contextId) {
         this.contextId = contextId;
@@ -302,6 +313,30 @@ public final class KubeResourceManager {
     }
 
     /**
+     * Sets the maximum number of concurrent async operations (create/delete) against the Kubernetes API.
+     *
+     * @param maxConcurrentOps maximum number of concurrent operations
+     */
+    public void setMaxConcurrentOperations(int maxConcurrentOps) {
+        if (maxConcurrentOps <= 0) {
+            throw new IllegalArgumentException(
+                "maxConcurrentOperations must be positive, got: " + maxConcurrentOps);
+        }
+        maxConcurrentOperations = maxConcurrentOps;
+        operationSemaphore = new Semaphore(maxConcurrentOps);
+        LOGGER.info("Max concurrent operations set to {}", maxConcurrentOps);
+    }
+
+    /**
+     * Returns the configured maximum number of concurrent async operations.
+     *
+     * @return configured max concurrent operations
+     */
+    public int getMaxConcurrentOperations() {
+        return maxConcurrentOperations;
+    }
+
+    /**
      * Sets test extension context
      *
      * @param ctx extension context
@@ -379,10 +414,8 @@ public final class KubeResourceManager {
         }
         stack.removeIf(item -> item.resource() != null
             && item.resource().getKind().equals(resource.getKind())
-            && Objects.equals(item.resource().getMetadata().getNamespace(),
-                resource.getMetadata().getNamespace())
-            && item.resource().getMetadata().getName()
-                .equals(resource.getMetadata().getName()));
+            && Objects.equals(item.resource().getMetadata().getNamespace(), resource.getMetadata().getNamespace())
+            && item.resource().getMetadata().getName().equals(resource.getMetadata().getName()));
     }
 
     /* ─────────────────────────  RESOURCE I/O HELPERS  ─────────────────────── */
@@ -565,16 +598,22 @@ public final class KubeResourceManager {
                     kubeClient().getClient().resource(resource).create();
                 }
                 if (waitReady) {
-                    CompletableFuture<Void> cf = CompletableFuture.runAsync(() ->
-                        assertTrue(waitResourceCondition(resource,
-                                new ResourceCondition<>(p -> {
-                                    if (isResourceWithReadiness(resource)) {
-                                        return kubeClient().getClient().resource(resource).isReady();
-                                    }
-                                    return kubeClient().getClient().resource(resource) != null;
-                                }, "ready")),
-                            "Timed out waiting for " + resource.getKind() + "/" +
-                                resource.getMetadata().getName()), EXECUTOR);
+                    CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
+                        operationSemaphore.acquireUninterruptibly();
+                        try {
+                            assertTrue(waitResourceCondition(resource,
+                                    new ResourceCondition<>(p -> {
+                                        if (isResourceWithReadiness(resource)) {
+                                            return kubeClient().getClient().resource(resource).isReady();
+                                        }
+                                        return kubeClient().getClient().resource(resource) != null;
+                                    }, "ready")),
+                                "Timed out waiting for " + resource.getKind() + "/" +
+                                    resource.getMetadata().getName());
+                        } finally {
+                            operationSemaphore.release();
+                        }
+                    }, EXECUTOR);
                     if (async) {
                         waiters.add(cf);
                     } else {
@@ -608,10 +647,16 @@ public final class KubeResourceManager {
                 if (waitReady) {
                     long timeout = Objects.requireNonNullElse(type.getTimeoutForResourceReadiness(),
                         KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
-                    CompletableFuture<Void> cf = CompletableFuture.runAsync(() ->
-                        assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
-                            "Timed out waiting for " + resource.getKind() + "/" +
-                                resource.getMetadata().getName()), EXECUTOR);
+                    CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
+                        operationSemaphore.acquireUninterruptibly();
+                        try {
+                            assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
+                                "Timed out waiting for " + resource.getKind() + "/" +
+                                    resource.getMetadata().getName());
+                        } finally {
+                            operationSemaphore.release();
+                        }
+                    }, EXECUTOR);
                     if (async) {
                         waiters.add(cf);
                     } else {
@@ -650,8 +695,8 @@ public final class KubeResourceManager {
     /**
      * Deletes resources with wait asynchronously.
      *
-     * @param resources     The resources to delete.
-     * @param <T>           The type of the resources.
+     * @param resources The resources to delete.
+     * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void deleteResourceAsyncWait(T... resources) {
@@ -661,8 +706,8 @@ public final class KubeResourceManager {
     /**
      * Deletes resources with wait.
      *
-     * @param resources     The resources to delete.
-     * @param <T>           The type of the resources.
+     * @param resources The resources to delete.
+     * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void deleteResourceWithWait(T... resources) {
@@ -672,8 +717,8 @@ public final class KubeResourceManager {
     /**
      * Deletes resources without wait.
      *
-     * @param resources     The resources to delete.
-     * @param <T>           The type of the resources.
+     * @param resources The resources to delete.
+     * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void deleteResourceWithoutWait(T... resources) {
@@ -683,10 +728,10 @@ public final class KubeResourceManager {
     /**
      * Deletes resources.
      *
-     * @param async             Enables async deletion.
-     * @param waitForDeletion   Flag indicating whether to wait for resource deletion.
-     * @param resources         The resources to delete.
-     * @param <T>               The type of the resources.
+     * @param async           Enables async deletion.
+     * @param waitForDeletion Flag indicating whether to wait for resource deletion.
+     * @param resources       The resources to delete.
+     * @param <T>             The type of the resources.
      */
     @SafeVarargs
     private <T extends HasMetadata> void deleteResource(boolean async, boolean waitForDeletion, T... resources) {
@@ -841,18 +886,18 @@ public final class KubeResourceManager {
      */
     public <T extends HasMetadata> boolean waitResourceCondition(
         T resource, ResourceCondition<T> condition, long resourceTimeout) {
-        return  waitResourceCondition(resource, condition, resourceTimeout,
+        return waitResourceCondition(resource, condition, resourceTimeout,
             () -> kubeClient().getClient().resource(resource).get());
     }
 
     /**
      * Waits for a resource condition to be fulfilled.
      *
-     * @param resource          The resource to wait for.
-     * @param condition         The condition to fulfill.
-     * @param <T>               The type of the resource.
-     * @param resourceTimeout   Timeout for resource condition
-     * @param resourceSupplier  Supplier with method for obtaining the resource - using client, or a different way.
+     * @param resource         The resource to wait for.
+     * @param condition        The condition to fulfill.
+     * @param <T>              The type of the resource.
+     * @param resourceTimeout  Timeout for resource condition
+     * @param resourceSupplier Supplier with method for obtaining the resource - using client, or a different way.
      * @return True if the condition is fulfilled, false otherwise.
      */
     public <T extends HasMetadata> boolean waitResourceCondition(
@@ -905,10 +950,13 @@ public final class KubeResourceManager {
         while (!stack.isEmpty()) {
             ResourceItem<?> item = stack.pop();
             CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
+                operationSemaphore.acquireUninterruptibly();
                 try {
                     item.throwableRunner().run();
                 } catch (Exception e) {
                     throw new RuntimeException(e.getMessage(), e);
+                } finally {
+                    operationSemaphore.release();
                 }
             }, EXECUTOR);
             if (async) {
@@ -947,7 +995,7 @@ public final class KubeResourceManager {
     /**
      * Method handling the async deletion, if the `waiters` parameter is not empty.
      *
-     * @param waiters   List of {@link CompletableFuture} that should be run async.
+     * @param waiters List of {@link CompletableFuture} that should be run async.
      */
     /* test */ void handleAsyncDeletion(List<CompletableFuture<Void>> waiters) {
         if (!waiters.isEmpty()) {
@@ -1019,9 +1067,22 @@ public final class KubeResourceManager {
 
     /* test */ <T extends HasMetadata> void decideDeleteWaitAsync(
         List<CompletableFuture<Void>> waiters, boolean async, T res) {
-        CompletableFuture<Void> cf = CompletableFuture.runAsync(() ->
-            assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
-                "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName()), EXECUTOR);
+        CompletableFuture<Void> cf;
+        if (async) {
+            cf = CompletableFuture.runAsync(() -> {
+                operationSemaphore.acquireUninterruptibly();
+                try {
+                    assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
+                        "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName());
+                } finally {
+                    operationSemaphore.release();
+                }
+            }, EXECUTOR);
+        } else {
+            cf = CompletableFuture.runAsync(() ->
+                assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
+                    "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName()), EXECUTOR);
+        }
         if (async) {
             waiters.add(cf);
         } else {
