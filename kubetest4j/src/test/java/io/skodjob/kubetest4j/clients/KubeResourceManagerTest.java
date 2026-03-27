@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -466,6 +467,88 @@ class KubeResourceManagerTest {
         assertTrue(KubeResourceManager.get().getCurrentResources().stream()
                 .noneMatch(r -> "stack-del-async".equals(r.getMetadata().getName())),
             "Resource should be removed from stored resources after deleteAsyncWait");
+    }
+
+    @Test
+    void testSetMaxConcurrentOperations() {
+        int original = KubeResourceManager.get().getMaxConcurrentOperations();
+
+        KubeResourceManager.get().setMaxConcurrentOperations(25);
+        assertEquals(25, KubeResourceManager.get().getMaxConcurrentOperations());
+
+        KubeResourceManager.get().setMaxConcurrentOperations(100);
+        assertEquals(100, KubeResourceManager.get().getMaxConcurrentOperations());
+
+        // Restore original value
+        KubeResourceManager.get().setMaxConcurrentOperations(original);
+        assertEquals(original, KubeResourceManager.get().getMaxConcurrentOperations());
+    }
+
+    @Test
+    void testSetMaxConcurrentOperationsDefaultValue() {
+        assertEquals(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS,
+            KubeResourceManager.get().getMaxConcurrentOperations());
+    }
+
+    @Test
+    void testSetMaxConcurrentOperationsRejectsInvalidValues() {
+        assertThrows(IllegalArgumentException.class,
+            () -> KubeResourceManager.get().setMaxConcurrentOperations(0),
+            "Should reject zero");
+        assertThrows(IllegalArgumentException.class,
+            () -> KubeResourceManager.get().setMaxConcurrentOperations(-1),
+            "Should reject negative values");
+    }
+
+    @Test
+    void testDeleteResourcesWithSemaphoreThrottling() {
+        // Set a small concurrency limit to verify semaphore is used
+        int original = KubeResourceManager.get().getMaxConcurrentOperations();
+        KubeResourceManager.get().setMaxConcurrentOperations(2);
+
+        // Create multiple resources
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata()
+            .withName("sem-test-1").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata()
+            .withName("sem-test-2").endMetadata().build();
+        Namespace ns3 = new NamespaceBuilder().withNewMetadata()
+            .withName("sem-test-3").endMetadata().build();
+
+        KubeResourceManager.get().createResourceWithWait(ns1);
+        KubeResourceManager.get().createResourceWithWait(ns2);
+        KubeResourceManager.get().createResourceWithWait(ns3);
+
+        assertEquals(3, KubeResourceManager.get().getCurrentResources().size());
+
+        // Delete all resources asynchronously with semaphore throttling
+        assertDoesNotThrow(() -> KubeResourceManager.get().deleteResources(true));
+
+        assertEquals(0, KubeResourceManager.get().getCurrentResources().size());
+
+        // Restore
+        KubeResourceManager.get().setMaxConcurrentOperations(original);
+    }
+
+    @Test
+    void testDeleteResourcesSyncWithSemaphore() {
+        int original = KubeResourceManager.get().getMaxConcurrentOperations();
+        KubeResourceManager.get().setMaxConcurrentOperations(2);
+
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata()
+            .withName("sem-sync-1").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata()
+            .withName("sem-sync-2").endMetadata().build();
+
+        KubeResourceManager.get().createResourceWithWait(ns1);
+        KubeResourceManager.get().createResourceWithWait(ns2);
+
+        // Delete synchronously
+        assertDoesNotThrow(() -> KubeResourceManager.get().deleteResources(false));
+
+        assertEquals(0, KubeResourceManager.get().getCurrentResources().size());
+
+        // Restore
+        KubeResourceManager.get().setMaxConcurrentOperations(original);
     }
 
     @Test
