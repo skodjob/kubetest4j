@@ -129,13 +129,12 @@ public final class KubeResourceManager {
     private static final Object CREATION_LOCK = new Object();
 
     // Configured maximum number of concurrent async operations.
-    private static volatile int maxConcurrentOperations =
-        KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS;
-
+    private static final AtomicInteger MAX_CONCURRENT_OPERATIONS =
+        new AtomicInteger(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS);
 
     // Semaphore controlling the maximum number of concurrent async operations (create/delete)
-    private static volatile Semaphore operationSemaphore =
-        new Semaphore(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS);
+    private static final AtomicReference<Semaphore> OPERATION_SEMAPHORE =
+        new AtomicReference<>(new Semaphore(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS));
 
     /**
      * Stores connected kube clients for context
@@ -322,8 +321,8 @@ public final class KubeResourceManager {
             throw new IllegalArgumentException(
                 "maxConcurrentOperations must be positive, got: " + maxConcurrentOps);
         }
-        maxConcurrentOperations = maxConcurrentOps;
-        operationSemaphore = new Semaphore(maxConcurrentOps);
+        MAX_CONCURRENT_OPERATIONS.set(maxConcurrentOps);
+        OPERATION_SEMAPHORE.set(new Semaphore(maxConcurrentOps));
         LOGGER.info("Max concurrent operations set to {}", maxConcurrentOps);
     }
 
@@ -333,7 +332,7 @@ public final class KubeResourceManager {
      * @return configured max concurrent operations
      */
     public int getMaxConcurrentOperations() {
-        return maxConcurrentOperations;
+        return MAX_CONCURRENT_OPERATIONS.get();
     }
 
     /**
@@ -599,7 +598,7 @@ public final class KubeResourceManager {
                 }
                 if (waitReady) {
                     CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                        operationSemaphore.acquireUninterruptibly();
+                        OPERATION_SEMAPHORE.get().acquireUninterruptibly();
                         try {
                             assertTrue(waitResourceCondition(resource,
                                     new ResourceCondition<>(p -> {
@@ -611,7 +610,7 @@ public final class KubeResourceManager {
                                 "Timed out waiting for " + resource.getKind() + "/" +
                                     resource.getMetadata().getName());
                         } finally {
-                            operationSemaphore.release();
+                            OPERATION_SEMAPHORE.get().release();
                         }
                     }, EXECUTOR);
                     if (async) {
@@ -648,13 +647,13 @@ public final class KubeResourceManager {
                     long timeout = Objects.requireNonNullElse(type.getTimeoutForResourceReadiness(),
                         KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
                     CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                        operationSemaphore.acquireUninterruptibly();
+                        OPERATION_SEMAPHORE.get().acquireUninterruptibly();
                         try {
                             assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
                                 "Timed out waiting for " + resource.getKind() + "/" +
                                     resource.getMetadata().getName());
                         } finally {
-                            operationSemaphore.release();
+                            OPERATION_SEMAPHORE.get().release();
                         }
                     }, EXECUTOR);
                     if (async) {
@@ -950,13 +949,13 @@ public final class KubeResourceManager {
         while (!stack.isEmpty()) {
             ResourceItem<?> item = stack.pop();
             CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                operationSemaphore.acquireUninterruptibly();
+                OPERATION_SEMAPHORE.get().acquireUninterruptibly();
                 try {
                     item.throwableRunner().run();
                 } catch (Exception e) {
                     throw new RuntimeException(e.getMessage(), e);
                 } finally {
-                    operationSemaphore.release();
+                    OPERATION_SEMAPHORE.get().release();
                 }
             }, EXECUTOR);
             if (async) {
@@ -1070,12 +1069,12 @@ public final class KubeResourceManager {
         CompletableFuture<Void> cf;
         if (async) {
             cf = CompletableFuture.runAsync(() -> {
-                operationSemaphore.acquireUninterruptibly();
+                OPERATION_SEMAPHORE.get().acquireUninterruptibly();
                 try {
                     assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
                         "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName());
                 } finally {
-                    operationSemaphore.release();
+                    OPERATION_SEMAPHORE.get().release();
                 }
             }, EXECUTOR);
         } else {
