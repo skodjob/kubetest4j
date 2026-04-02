@@ -6,8 +6,7 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
-import io.skodjob.kubetest4j.annotations.InjectNamespace;
-import io.skodjob.kubetest4j.annotations.InjectNamespaces;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import org.junit.jupiter.api.Test;
 
@@ -24,44 +23,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * - Only deletes namespaces that were created by the test
  * - Safely mixes existing and test-created namespaces
  */
-@KubernetesTest(
-    // Mix of existing namespaces (default) and test-created namespaces
-    namespaces = {"default", "protection-test-new-1", "protection-test-new-2"},
-    cleanup = CleanupStrategy.AUTOMATIC,
-    namespaceLabels = {"test-type=namespace-protection", "framework=kubetest-junit"},
-    namespaceAnnotations = {"description=Test demonstrating namespace protection"}
-)
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
 class NamespaceProtectionIT {
 
-    @InjectNamespaces
-    Map<String, Namespace> allNamespaces;
+    // Mix of existing namespaces (default) and test-created namespaces
+    @ClassNamespace(name = "default")
+    static Namespace defaultNamespace; // This should NEVER be deleted (namespace protection)
 
-    @InjectNamespace(name = "default")
-    Namespace defaultNamespace; // This should NEVER be deleted
+    @ClassNamespace(name = "protection-test-new-1",
+        labels = {"test-type=namespace-protection", "framework=kubetest-junit"},
+        annotations = {"description=Test demonstrating namespace protection"})
+    static Namespace createdNamespace1; // This will be deleted after test
 
-    @InjectNamespace(name = "protection-test-new-1")
-    Namespace createdNamespace1; // This will be deleted after test
-
-    @InjectNamespace(name = "protection-test-new-2")
-    Namespace createdNamespace2; // This will be deleted after test
+    @ClassNamespace(name = "protection-test-new-2",
+        labels = {"test-type=namespace-protection", "framework=kubetest-junit"},
+        annotations = {"description=Test demonstrating namespace protection"})
+    static Namespace createdNamespace2; // This will be deleted after test
 
     @Test
     void testMixedNamespaceUsage() {
         // Verify all namespaces are available
-        assertNotNull(allNamespaces, "All namespaces should be injected");
-        assertEquals(3, allNamespaces.size(), "Should have 3 total namespaces");
+        assertNotNull(defaultNamespace, "Default namespace should be injected");
+        assertNotNull(createdNamespace1, "Created namespace 1 should be injected");
+        assertNotNull(createdNamespace2, "Created namespace 2 should be injected");
 
-        // Verify existing namespace (default) is available
-        assertTrue(allNamespaces.containsKey("default"));
-        assertNotNull(defaultNamespace);
         assertEquals("default", defaultNamespace.getMetadata().getName());
-
-        // Verify test-created namespaces are available
-        assertTrue(allNamespaces.containsKey("protection-test-new-1"));
-        assertTrue(allNamespaces.containsKey("protection-test-new-2"));
-
-        assertNotNull(createdNamespace1);
-        assertNotNull(createdNamespace2);
         assertEquals("protection-test-new-1", createdNamespace1.getMetadata().getName());
         assertEquals("protection-test-new-2", createdNamespace2.getMetadata().getName());
     }
@@ -78,7 +64,6 @@ class NamespaceProtectionIT {
         Map<String, String> labels = defaultNamespace.getMetadata().getLabels();
         if (labels != null) {
             // Our test labels should NOT be applied to existing namespaces
-            // (only to namespaces we create)
             assertTrue(
                 !labels.containsKey("test-type") ||
                 !"namespace-protection".equals(labels.get("test-type")),
@@ -104,33 +89,13 @@ class NamespaceProtectionIT {
     }
 
     @Test
-    void testParameterInjection(
-        @InjectNamespace(name = "default") Namespace paramDefault,
-        @InjectNamespace(name = "protection-test-new-1") Namespace paramCreated) {
-
-        // Parameter injection should work for both existing and created namespaces
-        assertNotNull(paramDefault);
-        assertNotNull(paramCreated);
-
-        assertEquals("default", paramDefault.getMetadata().getName());
-        assertEquals("protection-test-new-1", paramCreated.getMetadata().getName());
-
-        // Should match field injection
-        assertEquals(defaultNamespace.getMetadata().getName(),
-            paramDefault.getMetadata().getName());
-        assertEquals(createdNamespace1.getMetadata().getName(),
-            paramCreated.getMetadata().getName());
-    }
-
-    @Test
     void testNamespaceStatus() {
         // All namespaces should be active and ready
-        for (String namespaceName : allNamespaces.keySet()) {
-            Namespace namespace = allNamespaces.get(namespaceName);
+        for (Namespace namespace : new Namespace[]{defaultNamespace, createdNamespace1, createdNamespace2}) {
             assertNotNull(namespace.getStatus(),
-                "Namespace " + namespaceName + " should have status");
+                "Namespace " + namespace.getMetadata().getName() + " should have status");
             assertEquals("Active", namespace.getStatus().getPhase(),
-                "Namespace " + namespaceName + " should be active");
+                "Namespace " + namespace.getMetadata().getName() + " should be active");
         }
     }
 }

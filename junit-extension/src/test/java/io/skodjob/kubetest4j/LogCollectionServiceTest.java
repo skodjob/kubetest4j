@@ -34,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -188,10 +189,17 @@ class LogCollectionServiceTest {
             when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
             when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
 
-            // Mock namespace query
+            // Mock labeled namespace
+            Namespace labeledNamespace = new NamespaceBuilder()
+                .withNewMetadata()
+                .withName("labeled-namespace")
+                .addToLabels("kubetest4j.skodjob.io/log-collection", "enabled")
+                .endMetadata()
+                .build();
+
             NamespaceList namespaceList = mock(NamespaceList.class);
             when(labelSelector.list()).thenReturn(namespaceList);
-            when(namespaceList.getItems()).thenReturn(List.of());
+            when(namespaceList.getItems()).thenReturn(List.of(labeledNamespace));
 
             // When
             manager.collectLogs(extensionContext, "test-suffix");
@@ -204,11 +212,8 @@ class LogCollectionServiceTest {
         @DisplayName("Should collect logs from multiple contexts")
         void shouldCollectLogsFromMultipleContexts() {
             // Given
-            TestConfig.AdditionalKubeContextConfig contextMapping = new TestConfig.AdditionalKubeContextConfig(
-                "staging", List.of("stg-ns"), CleanupStrategy.AUTOMATIC, List.of(), List.of()
-            );
-            TestConfig testConfig = createTestConfigWithContexts("/logs", LogCollectionStrategy.ON_FAILURE,
-                List.of("pods"), List.of(), false, List.of(contextMapping));
+            TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
+                List.of("pods"), List.of(), false);
 
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
             when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
@@ -233,13 +238,26 @@ class LogCollectionServiceTest {
             Map<String, KubeResourceManager> contextManagers = Map.of("staging", stagingManager);
             when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(contextManagers);
 
-            // Mock namespace queries
+            // Mock namespace queries with labeled namespaces
+            Namespace primaryLabeledNs = new NamespaceBuilder()
+                .withNewMetadata()
+                .withName("primary-labeled-ns")
+                .addToLabels("kubetest4j.skodjob.io/log-collection", "enabled")
+                .endMetadata()
+                .build();
+            Namespace stagingLabeledNs = new NamespaceBuilder()
+                .withNewMetadata()
+                .withName("staging-labeled-ns")
+                .addToLabels("kubetest4j.skodjob.io/log-collection", "enabled")
+                .endMetadata()
+                .build();
+
             NamespaceList primaryNamespaceList = mock(NamespaceList.class);
             NamespaceList stagingNamespaceList = mock(NamespaceList.class);
             when(labelSelector.list()).thenReturn(primaryNamespaceList);
             when(stagingLabelSelector.list()).thenReturn(stagingNamespaceList);
-            when(primaryNamespaceList.getItems()).thenReturn(List.of());
-            when(stagingNamespaceList.getItems()).thenReturn(List.of());
+            when(primaryNamespaceList.getItems()).thenReturn(List.of(primaryLabeledNs));
+            when(stagingNamespaceList.getItems()).thenReturn(List.of(stagingLabeledNs));
 
             // When
             manager.collectLogs(extensionContext, "test-suffix");
@@ -286,7 +304,7 @@ class LogCollectionServiceTest {
             Namespace labeledNamespace = new NamespaceBuilder()
                 .withNewMetadata()
                 .withName("labeled-namespace")
-                .addToLabels("test-frame.io/log-collection", "enabled")
+                .addToLabels("kubetest4j.skodjob.io/log-collection", "enabled")
                 .endMetadata()
                 .build();
 
@@ -298,7 +316,7 @@ class LogCollectionServiceTest {
             manager.collectLogs(extensionContext, "test-suffix");
 
             // Then
-            // Verify that log collection was attempted with both test namespaces and labeled namespaces
+            // Verify that log collection was attempted with labeled namespaces
             verify(logCollector).collectFromNamespaces(any(String[].class));
         }
     }
@@ -325,8 +343,8 @@ class LogCollectionServiceTest {
             manager.collectLogs(extensionContext, "test-suffix");
 
             // Then
-            // Should not crash and should continue with test namespaces
-            verify(logCollector).collectFromNamespaces(any(String[].class));
+            // Should not crash but should skip collection since no namespaces are found
+            verify(logCollector, never()).collectFromNamespaces(any(String[].class));
         }
 
         @Test
@@ -349,22 +367,19 @@ class LogCollectionServiceTest {
             manager.collectLogs(extensionContext, "test-suffix");
 
             // Then
-            // Should still attempt log collection with test namespaces
-            verify(logCollector).collectFromNamespaces(any(String[].class));
+            // Should skip log collection since there are no labeled namespaces
+            verify(logCollector, never()).collectFromNamespaces(any(String[].class));
         }
     }
 
-    // Helper methods to create TestConfig instances for testing
+    // Helper method to create TestConfig instances for testing
     private TestConfig createTestConfig(String logPath, LogCollectionStrategy strategy,
                                         List<String> namespacedResources, List<String> clusterResources,
                                         boolean collectPreviousLogs) {
         return new TestConfig(
-            List.of("test-namespace"),
             CleanupStrategy.AUTOMATIC,
             false,
             "",
-            List.of(),
-            List.of(),
             "#",
             76,
             true,
@@ -372,31 +387,7 @@ class LogCollectionServiceTest {
             logPath,
             collectPreviousLogs,
             namespacedResources,
-            clusterResources,
-            List.of()
-        );
-    }
-
-    private TestConfig createTestConfigWithContexts(String logPath, LogCollectionStrategy strategy,
-                                                    List<String> namespacedResources, List<String> clusterResources,
-                                                    boolean collectPreviousLogs,
-                                                    List<TestConfig.AdditionalKubeContextConfig> contextMappings) {
-        return new TestConfig(
-            List.of("test-namespace"),
-            CleanupStrategy.AUTOMATIC,
-            false,
-            "",
-            List.of(),
-            List.of(),
-            "#",
-            76,
-            true,
-            strategy,
-            logPath,
-            collectPreviousLogs,
-            namespacedResources,
-            clusterResources,
-            contextMappings
+            clusterResources
         );
     }
 }

@@ -6,6 +6,7 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.skodjob.kubetest4j.clients.KubeClient;
@@ -13,6 +14,7 @@ import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -30,27 +32,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Advanced example test demonstrating more complex features:
  * - Manual cleanup strategy
  * - BeforeEach setup with shared resources
- * - Custom namespace configuration
+ * - Custom namespace configuration with labels and annotations
  * - Resource lifecycle management
  */
 @KubernetesTest(
-    namespaces = {"advanced-tests"},
     cleanup = CleanupStrategy.AUTOMATIC,
-    storeYaml = true,
-    namespaceLabels = {
-        "test-suite=advanced",
-        "cleanup=manual",
-        "framework=kubetest-junit"
-    },
-    namespaceAnnotations = {
-        "description=Advanced test example with manual cleanup",
-        "created-by=kubetest-junit"
-    }
+    storeYaml = true
 )
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AdvancedKubernetesIT {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AdvancedKubernetesIT.class);
+
+    @ClassNamespace(name = "advanced-tests",
+        labels = {"test-suite=advanced", "cleanup=manual", "framework=kubetest-junit"},
+        annotations = {"description=Advanced test example with manual cleanup", "created-by=kubetest-junit"})
+    static Namespace advancedTestsNs;
 
     @InjectKubeClient
     KubeClient client;
@@ -92,11 +89,9 @@ class AdvancedKubernetesIT {
     void testSharedResourceAccess() {
         LOGGER.info("Testing access to shared resources");
 
-        // Verify we can access the shared resource
         assertNotNull(sharedConfig, "Shared config should be available");
         assertEquals("shared-value", sharedConfig.getData().get("shared.property"));
 
-        // Verify it exists in the cluster
         ConfigMap clusterConfig = client.getClient().configMaps()
             .inNamespace("advanced-tests")
             .withName("shared-config")
@@ -110,7 +105,6 @@ class AdvancedKubernetesIT {
     void testSecretCreation() {
         LOGGER.info("Testing secret creation and management");
 
-        // Create a secret that references the shared config
         Secret testSecret = new SecretBuilder()
             .withNewMetadata()
             .withName("test-secret")
@@ -125,7 +119,6 @@ class AdvancedKubernetesIT {
 
         resourceManager.createResourceWithWait(testSecret);
 
-        // Verify secret is created with correct data
         Secret clusterSecret = client.getClient().secrets()
             .inNamespace("advanced-tests")
             .withName("test-secret")
@@ -142,7 +135,6 @@ class AdvancedKubernetesIT {
     void testResourceLabelsAndAnnotations() {
         LOGGER.info("Testing resource labels and annotations");
 
-        // Create a resource with specific labels and annotations
         ConfigMap labeledConfig = new ConfigMapBuilder()
             .withNewMetadata()
             .withName("labeled-config")
@@ -158,7 +150,6 @@ class AdvancedKubernetesIT {
 
         resourceManager.createResourceWithWait(labeledConfig);
 
-        // Verify labels and annotations are applied correctly
         ConfigMap clusterConfig = client.getClient().configMaps()
             .inNamespace("advanced-tests")
             .withName("labeled-config")
@@ -180,7 +171,6 @@ class AdvancedKubernetesIT {
     void testManualCleanup() {
         LOGGER.info("Testing manual cleanup strategy");
 
-        // Create a resource that we'll manually clean up
         ConfigMap tempConfig = new ConfigMapBuilder()
             .withNewMetadata()
             .withName("temp-config")
@@ -192,22 +182,18 @@ class AdvancedKubernetesIT {
 
         resourceManager.createResourceWithWait(tempConfig);
 
-        // Verify it exists
         ConfigMap created = client.getClient().configMaps()
             .inNamespace("advanced-tests")
             .withName("temp-config")
             .get();
         assertNotNull(created, "Temp config should be created");
 
-        // Manually delete it
         resourceManager.deleteResourceWithWait(tempConfig);
 
-        // Verify it's deleted
         ConfigMap deleted = client.getClient().configMaps()
             .inNamespace("advanced-tests")
             .withName("temp-config")
             .get();
-        // Note: In manual cleanup mode, we need to verify deletion ourselves
         LOGGER.info("Manual cleanup test completed. Resource state: {}",
             deleted == null ? "deleted" : "exists");
     }

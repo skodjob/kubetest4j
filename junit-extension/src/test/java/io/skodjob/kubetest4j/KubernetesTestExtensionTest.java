@@ -22,7 +22,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -69,12 +68,9 @@ class KubernetesTestExtensionTest {
         void shouldCreateTestConfigWithDefaults() {
             // Given - Create actual TestConfig directly since createTestConfig is private
             TestConfig config = new TestConfig(
-                List.of("test-ns"),
                 CleanupStrategy.AUTOMATIC,
                 false,
                 "",
-                List.of(),
-                List.of(),
                 "#",
                 76,
                 false,
@@ -82,13 +78,11 @@ class KubernetesTestExtensionTest {
                 "",
                 false,
                 List.of("pods"),
-                List.of(),
-                List.of() // Empty kubeContext mappings
+                List.of()
             );
 
             // Then
             assertNotNull(config);
-            assertEquals(List.of("test-ns"), config.namespaces());
             assertEquals(CleanupStrategy.AUTOMATIC, config.cleanup());
             assertFalse(config.storeYaml());
             assertEquals("", config.yamlStorePath());
@@ -103,12 +97,9 @@ class KubernetesTestExtensionTest {
         void shouldCreateTestConfigWithCustomValues() {
             // Given - Create actual TestConfig directly
             TestConfig config = new TestConfig(
-                Arrays.asList("ns1", "ns2"),
                 CleanupStrategy.MANUAL,
                 true,
                 "target/yamls",
-                List.of("env=test"),
-                List.of("description=test"),
                 "=",
                 80,
                 true,
@@ -116,17 +107,13 @@ class KubernetesTestExtensionTest {
                 "target/logs",
                 true,
                 List.of("pods", "services"),
-                List.of("nodes"),
-                List.of() // Empty kubeContext mappings
+                List.of("nodes")
             );
 
             // Then
-            assertEquals(Arrays.asList("ns1", "ns2"), config.namespaces());
             assertEquals(CleanupStrategy.MANUAL, config.cleanup());
             assertTrue(config.storeYaml());
             assertEquals("target/yamls", config.yamlStorePath());
-            assertEquals(List.of("env=test"), config.namespaceLabels());
-            assertEquals(List.of("description=test"), config.namespaceAnnotations());
             assertEquals("=", config.visualSeparatorChar());
             assertEquals(80, config.visualSeparatorLength());
             assertTrue(config.collectLogs());
@@ -142,12 +129,9 @@ class KubernetesTestExtensionTest {
         void shouldValidateTestConfigRecordProperties() {
             // Given - Create TestConfig with various values
             TestConfig config = new TestConfig(
-                List.of("ns1", "ns2", "ns3"),
                 CleanupStrategy.AUTOMATIC,
                 true,
                 "/tmp/yamls",
-                List.of("label1=value1", "label2=value2"),
-                List.of("annotation1=value1"),
                 "=",
                 100,
                 true,
@@ -155,17 +139,13 @@ class KubernetesTestExtensionTest {
                 "/tmp/logs",
                 true,
                 List.of("pods", "services", "configmaps"),
-                List.of("nodes", "persistentvolumes"),
-                List.of() // Empty kubeContext mappings
+                List.of("nodes", "persistentvolumes")
             );
 
             // Then - Verify all properties
-            assertEquals(List.of("ns1", "ns2", "ns3"), config.namespaces());
             assertEquals(CleanupStrategy.AUTOMATIC, config.cleanup());
             assertTrue(config.storeYaml());
             assertEquals("/tmp/yamls", config.yamlStorePath());
-            assertEquals(List.of("label1=value1", "label2=value2"), config.namespaceLabels());
-            assertEquals(List.of("annotation1=value1"), config.namespaceAnnotations());
             assertEquals("=", config.visualSeparatorChar());
             assertEquals(100, config.visualSeparatorLength());
             assertTrue(config.collectLogs());
@@ -241,89 +221,6 @@ class KubernetesTestExtensionTest {
     }
 
     @Nested
-    @DisplayName("Multi-Context TestConfig Tests")
-    class MultiContextTestConfigTests {
-
-        @Test
-        @DisplayName("Should create TestConfig with kubeContext mappings")
-        void shouldCreateTestConfigWithContextMappings() {
-            // Given - Create kubeContext mappings
-            List<TestConfig.AdditionalKubeContextConfig> contextMappings = List.of(
-                new TestConfig.AdditionalKubeContextConfig(
-                    "staging-cluster",
-                    List.of("stg-app", "stg-db"),
-                    CleanupStrategy.AUTOMATIC,
-                    List.of("env=staging"),
-                    List.of("stage=staging")
-                ),
-                new TestConfig.AdditionalKubeContextConfig(
-                    "production-cluster",
-                    List.of("prod-api"),
-                    CleanupStrategy.MANUAL,
-                    List.of("env=production"),
-                    List.of("stage=production")
-                )
-            );
-
-            TestConfig config = new TestConfig(
-                List.of("default-ns"),
-                CleanupStrategy.AUTOMATIC,
-                false,
-                "",
-                List.of(),
-                List.of(),
-                "#",
-                76,
-                false,
-                LogCollectionStrategy.ON_FAILURE,
-                "",
-                false,
-                List.of("pods"),
-                List.of(),
-                contextMappings
-            );
-
-            // Then - Verify kubeContext mappings
-            assertNotNull(config.additionalKubeContexts());
-            assertEquals(2, config.additionalKubeContexts().size());
-
-            // Verify staging mapping
-            TestConfig.AdditionalKubeContextConfig stagingMapping = config.additionalKubeContexts().get(0);
-            assertEquals("staging-cluster", stagingMapping.name());
-            assertEquals(List.of("stg-app", "stg-db"), stagingMapping.namespaces());
-            assertEquals(CleanupStrategy.AUTOMATIC, stagingMapping.cleanup());
-            assertEquals(List.of("env=staging"), stagingMapping.namespaceLabels());
-            assertEquals(List.of("stage=staging"), stagingMapping.namespaceAnnotations());
-
-            // Verify production mapping
-            TestConfig.AdditionalKubeContextConfig prodMapping = config.additionalKubeContexts().get(1);
-            assertEquals("production-cluster", prodMapping.name());
-            assertEquals(List.of("prod-api"), prodMapping.namespaces());
-            assertEquals(CleanupStrategy.MANUAL, prodMapping.cleanup());
-        }
-
-        @Test
-        @DisplayName("Should verify AdditionalKubeContextConfig properties")
-        void shouldVerifyAdditionalKubeContextConfigProperties() {
-            // Given
-            TestConfig.AdditionalKubeContextConfig config = new TestConfig.AdditionalKubeContextConfig(
-                "test-kubeContext",
-                List.of("ns1", "ns2"),
-                CleanupStrategy.MANUAL,
-                List.of("label1=value1", "label2=value2"),
-                List.of("annotation1=value1")
-            );
-
-            // Then
-            assertEquals("test-kubeContext", config.name());
-            assertEquals(List.of("ns1", "ns2"), config.namespaces());
-            assertEquals(CleanupStrategy.MANUAL, config.cleanup());
-            assertEquals(List.of("label1=value1", "label2=value2"), config.namespaceLabels());
-            assertEquals(List.of("annotation1=value1"), config.namespaceAnnotations());
-        }
-    }
-
-    @Nested
     @DisplayName("Enum Validation Tests")
     class EnumValidationTests {
 
@@ -332,12 +229,9 @@ class KubernetesTestExtensionTest {
         void shouldValidateCleanupStrategyEnumValues() {
             // Test that all cleanup strategy values work correctly
             TestConfig automaticConfig = new TestConfig(
-                List.of("test"),
                 CleanupStrategy.AUTOMATIC,
                 false,
                 "",
-                List.of(),
-                List.of(),
                 "#",
                 76,
                 false,
@@ -345,17 +239,13 @@ class KubernetesTestExtensionTest {
                 "",
                 false,
                 List.of(),
-                List.of(),
-                List.of() // Empty kubeContext mappings
+                List.of()
             );
 
             TestConfig manualConfig = new TestConfig(
-                List.of("test"),
                 CleanupStrategy.MANUAL,
                 false,
                 "",
-                List.of(),
-                List.of(),
                 "#",
                 76,
                 false,
@@ -363,8 +253,7 @@ class KubernetesTestExtensionTest {
                 "",
                 false,
                 List.of(),
-                List.of(),
-                List.of() // Empty kubeContext mappings
+                List.of()
             );
 
             assertEquals(CleanupStrategy.AUTOMATIC, automaticConfig.cleanup());
@@ -377,12 +266,9 @@ class KubernetesTestExtensionTest {
             // Test that all log collection strategy values work correctly
             for (LogCollectionStrategy strategy : LogCollectionStrategy.values()) {
                 TestConfig config = new TestConfig(
-                    List.of("test"),
                     CleanupStrategy.AUTOMATIC,
                     false,
                     "",
-                    List.of(),
-                    List.of(),
                     "#",
                     76,
                     false,
@@ -390,8 +276,7 @@ class KubernetesTestExtensionTest {
                     "",
                     false,
                     List.of(),
-                    List.of(),
-                    List.of() // Empty kubeContext mappings
+                    List.of()
                 );
 
                 assertEquals(strategy, config.logCollectionStrategy());

@@ -7,6 +7,7 @@ package io.skodjob.kubetest4j.examples;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.IntOrStringBuilder;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -17,6 +18,7 @@ import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.Test;
 
@@ -25,20 +27,25 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Example test demonstrating multi-namespace testing with explicit namespace specification.
+ * Example test demonstrating multi-namespace testing with @ClassNamespace.
  * Shows how to create resources in different namespaces and collect logs from all of them.
  */
 @KubernetesTest(
-    // Create multiple namespaces for testing
-    namespaces = {"frontend", "backend", "monitoring"},
     cleanup = CleanupStrategy.AUTOMATIC,
-
-    // Log collection from all namespaces automatically
     collectLogs = true,
     logCollectionStrategy = LogCollectionStrategy.ON_FAILURE,
     logCollectionPath = "target/test-logs/multi-namespace"
 )
 class MultiNamespaceIT {
+
+    @ClassNamespace(name = "frontend")
+    static Namespace frontendNs;
+
+    @ClassNamespace(name = "backend")
+    static Namespace backendNs;
+
+    @ClassNamespace(name = "monitoring")
+    static Namespace monitoringNs;
 
     @InjectKubeClient
     KubeClient client;
@@ -52,7 +59,7 @@ class MultiNamespaceIT {
         ConfigMap frontendConfig = new ConfigMapBuilder()
             .withNewMetadata()
             .withName("frontend-config")
-            .withNamespace("frontend")  // Explicit namespace
+            .withNamespace("frontend")
             .endMetadata()
             .addToData("app.name", "frontend-app")
             .addToData("app.version", "1.0.0")
@@ -62,7 +69,7 @@ class MultiNamespaceIT {
         Service backendService = new ServiceBuilder()
             .withNewMetadata()
             .withName("backend-service")
-            .withNamespace("backend")  // Explicit namespace
+            .withNamespace("backend")
             .endMetadata()
             .withNewSpec()
             .withSelector(Map.of("app", "backend"))
@@ -77,7 +84,7 @@ class MultiNamespaceIT {
         Secret monitoringSecret = new SecretBuilder()
             .withNewMetadata()
             .withName("monitoring-credentials")
-            .withNamespace("monitoring")  // Explicit namespace
+            .withNamespace("monitoring")
             .endMetadata()
             .addToData("username", "bW9uaXRvcmluZw==")  // base64: monitoring
             .addToData("password", "c2VjcmV0MTIz")      // base64: secret123

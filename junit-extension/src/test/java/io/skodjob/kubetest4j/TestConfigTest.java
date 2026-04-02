@@ -29,12 +29,9 @@ class TestConfigTest {
     void shouldCreateTestConfigWithMinimalConfiguration() {
         // Given
         TestConfig config = new TestConfig(
-            List.of("test-ns"),
             CleanupStrategy.AUTOMATIC,
             false,
             "",
-            List.of(),
-            List.of(),
             "#",
             76,
             false,
@@ -42,18 +39,14 @@ class TestConfigTest {
             "",
             false,
             List.of("pods"),
-            List.of(),
             List.of()
         );
 
         // Then
         assertNotNull(config);
-        assertEquals(List.of("test-ns"), config.namespaces());
         assertEquals(CleanupStrategy.AUTOMATIC, config.cleanup());
         assertFalse(config.storeYaml());
         assertEquals("", config.yamlStorePath());
-        assertEquals(0, config.namespaceLabels().size());
-        assertEquals(0, config.namespaceAnnotations().size());
         assertEquals("#", config.visualSeparatorChar());
         assertEquals(76, config.visualSeparatorLength());
         assertFalse(config.collectLogs());
@@ -62,27 +55,19 @@ class TestConfigTest {
         assertFalse(config.collectPreviousLogs());
         assertEquals(List.of("pods"), config.collectNamespacedResources());
         assertEquals(0, config.collectClusterWideResources().size());
-        assertNotNull(config.additionalKubeContexts());
-        assertEquals(0, config.additionalKubeContexts().size());
     }
 
     @Test
     @DisplayName("Should create TestConfig with full configuration")
     void shouldCreateTestConfigWithFullConfiguration() {
         // Given
-        List<String> namespaces = List.of("ns1", "ns2", "ns3");
-        List<String> namespaceLabels = List.of("env=test", "team=backend", "version=1.0");
-        List<String> namespaceAnnotations = List.of("description=test namespace", "contact=team@company.com");
         List<String> namespacedResources = List.of("pods", "services", "configmaps", "secrets", "deployments");
         List<String> clusterWideResources = List.of("nodes", "persistentvolumes", "storageclasses");
 
         TestConfig config = new TestConfig(
-            namespaces,
             CleanupStrategy.MANUAL,
             true,
             "/opt/yamls",
-            namespaceLabels,
-            namespaceAnnotations,
             "=",
             120,
             true,
@@ -90,17 +75,13 @@ class TestConfigTest {
             "/var/log/tests",
             true,
             namespacedResources,
-            clusterWideResources,
-            List.of()
+            clusterWideResources
         );
 
         // Then
-        assertEquals(namespaces, config.namespaces());
         assertEquals(CleanupStrategy.MANUAL, config.cleanup());
         assertTrue(config.storeYaml());
         assertEquals("/opt/yamls", config.yamlStorePath());
-        assertEquals(namespaceLabels, config.namespaceLabels());
-        assertEquals(namespaceAnnotations, config.namespaceAnnotations());
         assertEquals("=", config.visualSeparatorChar());
         assertEquals(120, config.visualSeparatorLength());
         assertTrue(config.collectLogs());
@@ -116,30 +97,20 @@ class TestConfigTest {
     void shouldHandleEmptyListsCorrectly() {
         // Given
         TestConfig config = new TestConfig(
-            List.of(), // Empty namespaces
             CleanupStrategy.AUTOMATIC,
             false,
             "",
-            List.of(), // Empty labels
-            List.of(), // Empty annotations
             "#",
             76,
             false,
             LogCollectionStrategy.ON_FAILURE,
             "",
             false,
-            List.of(), // Empty namespaced resources
-            List.of(), // Empty cluster-wide resources
+            List.of(),
             List.of()
         );
 
         // Then
-        assertNotNull(config.namespaces());
-        assertEquals(0, config.namespaces().size());
-        assertNotNull(config.namespaceLabels());
-        assertEquals(0, config.namespaceLabels().size());
-        assertNotNull(config.namespaceAnnotations());
-        assertEquals(0, config.namespaceAnnotations().size());
         assertNotNull(config.collectNamespacedResources());
         assertEquals(0, config.collectNamespacedResources().size());
         assertNotNull(config.collectClusterWideResources());
@@ -152,19 +123,15 @@ class TestConfigTest {
     void shouldAcceptVariousVisualSeparatorCharacters(String separatorChar) {
         // Given/When
         TestConfig config = new TestConfig(
-            List.of("test"),
             CleanupStrategy.AUTOMATIC,
             false,
             "",
-            List.of(),
-            List.of(),
             separatorChar,
             76,
             false,
             LogCollectionStrategy.ON_FAILURE,
             "",
             false,
-            List.of(),
             List.of(),
             List.of()
         );
@@ -179,19 +146,15 @@ class TestConfigTest {
     void shouldAcceptVariousVisualSeparatorLengths(int length) {
         // Given/When
         TestConfig config = new TestConfig(
-            List.of("test"),
             CleanupStrategy.AUTOMATIC,
             false,
             "",
-            List.of(),
-            List.of(),
             "#",
             length,
             false,
             LogCollectionStrategy.ON_FAILURE,
             "",
             false,
-            List.of(),
             List.of(),
             List.of()
         );
@@ -206,19 +169,15 @@ class TestConfigTest {
         for (CleanupStrategy strategy : CleanupStrategy.values()) {
             // Given/When
             TestConfig config = new TestConfig(
-                List.of("test"),
                 strategy,
                 false,
                 "",
-                List.of(),
-                List.of(),
                 "#",
                 76,
                 false,
                 LogCollectionStrategy.ON_FAILURE,
                 "",
                 false,
-                List.of(),
                 List.of(),
                 List.of()
             );
@@ -234,19 +193,15 @@ class TestConfigTest {
         for (LogCollectionStrategy strategy : LogCollectionStrategy.values()) {
             // Given/When
             TestConfig config = new TestConfig(
-                List.of("test"),
                 CleanupStrategy.AUTOMATIC,
                 false,
                 "",
-                List.of(),
-                List.of(),
                 "#",
                 76,
                 false,
                 strategy,
                 "",
                 false,
-                List.of(),
                 List.of(),
                 List.of()
             );
@@ -267,19 +222,15 @@ class TestConfigTest {
                 for (boolean collectPreviousLogs : values) {
                     // Given/When
                     TestConfig config = new TestConfig(
-                        List.of("test"),
                         CleanupStrategy.AUTOMATIC,
                         storeYaml,
                         "",
-                        List.of(),
-                        List.of(),
                         "#",
                         76,
                         collectLogs,
                         LogCollectionStrategy.ON_FAILURE,
                         "",
                         collectPreviousLogs,
-                        List.of(),
                         List.of(),
                         List.of()
                     );

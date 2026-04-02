@@ -319,12 +319,9 @@ class ExceptionHandlerDelegateTest {
     private TestConfig createTestConfig(LogCollectionStrategy logStrategy, CleanupStrategy cleanupStrategy,
                                         boolean collectLogs) {
         return new TestConfig(
-            List.of("test-namespace"),
             cleanupStrategy,
             false,
             "",
-            List.of(),
-            List.of(),
             "#",
             76,
             collectLogs,
@@ -332,7 +329,6 @@ class ExceptionHandlerDelegateTest {
             "",
             false,
             List.of("pods"),
-            List.of(),
             List.of()
         );
     }

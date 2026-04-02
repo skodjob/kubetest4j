@@ -196,6 +196,7 @@ Now that you have a working test, explore these features:
 
 | Feature | Documentation |
 |---------|--------------|
+| Per-test namespace isolation | [junit-extension README](../junit-extension/README.md#methodnamespace--per-test-method-namespaces) |
 | Multi-namespace testing | [junit-extension README](../junit-extension/README.md#multi-namespace-testing) |
 | Log collection on failure | [junit-extension README](../junit-extension/README.md#comprehensive-log-collection) |
 | Multi-cluster testing | [junit-extension README](../junit-extension/README.md#advanced-multi-context-testing) |

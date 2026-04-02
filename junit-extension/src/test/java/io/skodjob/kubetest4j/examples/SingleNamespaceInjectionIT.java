@@ -6,42 +6,37 @@ package io.skodjob.kubetest4j.examples;
 
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
-import io.skodjob.kubetest4j.annotations.InjectNamespace;
-import io.skodjob.kubetest4j.annotations.InjectNamespaces;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Example test demonstrating single namespace injection with @InjectNamespace.
+ * Example test demonstrating class namespace injection with @ClassNamespace.
  * This test shows how to:
- * - Inject specific namespace objects by name into test fields
- * - Use @InjectNamespace alongside @InjectNamespaces
- * - Access namespace metadata for specific namespaces
+ * - Inject specific namespace objects by name into static fields
+ * - Use @ClassNamespace with labels and annotations
+ * - Access namespace metadata
  */
-@KubernetesTest(
-    namespaces = {"frontend-ns", "backend-ns", "monitoring-ns"},
-    cleanup = CleanupStrategy.AUTOMATIC,
-    namespaceLabels = {"test-type=single-namespace-injection", "framework=kubetest-junit"},
-    namespaceAnnotations = {"description=Test for single namespace injection functionality"}
-)
+@KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
 class SingleNamespaceInjectionIT {
 
-    @InjectNamespace(name = "frontend-ns")
-    Namespace frontendNamespace;
+    @ClassNamespace(name = "frontend-ns",
+        labels = {"test-type=single-namespace-injection", "framework=kubetest-junit"},
+        annotations = {"description=Test for single namespace injection functionality"})
+    static Namespace frontendNamespace;
 
-    @InjectNamespace(name = "backend-ns")
-    Namespace backendNamespace;
+    @ClassNamespace(name = "backend-ns",
+        labels = {"test-type=single-namespace-injection", "framework=kubetest-junit"},
+        annotations = {"description=Test for single namespace injection functionality"})
+    static Namespace backendNamespace;
 
-    @InjectNamespace(name = "monitoring-ns")
-    Namespace monitoringNamespace;
-
-    @InjectNamespaces
-    Map<String, Namespace> allNamespaces;
+    @ClassNamespace(name = "monitoring-ns",
+        labels = {"test-type=single-namespace-injection", "framework=kubetest-junit"},
+        annotations = {"description=Test for single namespace injection functionality"})
+    static Namespace monitoringNamespace;
 
     @Test
     void testSingleNamespaceInjection() {
@@ -60,11 +55,15 @@ class SingleNamespaceInjectionIT {
     void testNamespaceMetadata() {
         // Verify namespace labels are applied correctly
         assertNotNull(frontendNamespace.getMetadata().getLabels());
-        assertEquals("single-namespace-injection", frontendNamespace.getMetadata().getLabels().get("test-type"));
-        assertEquals("kubetest-junit", frontendNamespace.getMetadata().getLabels().get("framework"));
+        assertEquals("single-namespace-injection",
+            frontendNamespace.getMetadata().getLabels().get("test-type"));
+        assertEquals("kubetest-junit",
+            frontendNamespace.getMetadata().getLabels().get("framework"));
 
-        assertEquals("single-namespace-injection", backendNamespace.getMetadata().getLabels().get("test-type"));
-        assertEquals("single-namespace-injection", monitoringNamespace.getMetadata().getLabels().get("test-type"));
+        assertEquals("single-namespace-injection",
+            backendNamespace.getMetadata().getLabels().get("test-type"));
+        assertEquals("single-namespace-injection",
+            monitoringNamespace.getMetadata().getLabels().get("test-type"));
 
         // Verify namespace annotations are applied
         for (Namespace namespace : new Namespace[]{frontendNamespace, backendNamespace, monitoringNamespace}) {
@@ -72,36 +71,6 @@ class SingleNamespaceInjectionIT {
             assertEquals("Test for single namespace injection functionality",
                 namespace.getMetadata().getAnnotations().get("description"));
         }
-    }
-
-    @Test
-    void testCombinedInjection() {
-        // Verify that single namespace injection matches map injection
-        assertEquals(3, allNamespaces.size(), "Should have 3 total namespaces");
-
-        assertEquals(frontendNamespace.getMetadata().getName(),
-            allNamespaces.get("frontend-ns").getMetadata().getName());
-        assertEquals(backendNamespace.getMetadata().getName(),
-            allNamespaces.get("backend-ns").getMetadata().getName());
-        assertEquals(monitoringNamespace.getMetadata().getName(),
-            allNamespaces.get("monitoring-ns").getMetadata().getName());
-    }
-
-    @Test
-    void testParameterInjection(@InjectNamespace(name = "frontend-ns") Namespace paramFrontend,
-                                @InjectNamespace(name = "backend-ns") Namespace paramBackend) {
-        // Demonstrate parameter injection for single namespaces
-        assertNotNull(paramFrontend, "Parameter frontend namespace should be injected");
-        assertNotNull(paramBackend, "Parameter backend namespace should be injected");
-
-        assertEquals("frontend-ns", paramFrontend.getMetadata().getName());
-        assertEquals("backend-ns", paramBackend.getMetadata().getName());
-
-        // Verify parameter injection has same namespaces as field injection
-        assertEquals(frontendNamespace.getMetadata().getName(),
-            paramFrontend.getMetadata().getName());
-        assertEquals(backendNamespace.getMetadata().getName(),
-            paramBackend.getMetadata().getName());
     }
 
     @Test
