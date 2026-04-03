@@ -8,6 +8,9 @@ target/
 .idea/
 *.iml
 
+# Eclipse specific
+.project
+
 ### Mac OS ###
 **.DS_Store
 

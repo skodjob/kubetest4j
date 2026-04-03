@@ -580,7 +580,8 @@ public final class KubeResourceManager {
     @SafeVarargs
     private <T extends HasMetadata> void createOrUpdateResource(
         boolean async, boolean waitReady, boolean allowUpdate, T... resources) {
-        List<CompletableFuture<Void>> waiters = new ArrayList<>();
+        List<CompletableFuture<Void>> promises = new ArrayList<>();
+
         for (T resource : resources) {
             ResourceType<T> type = findResourceType(resource);
             pushToStack(resource);
@@ -589,6 +590,40 @@ public final class KubeResourceManager {
             }
 
             if (type == null) {
+                promises.add(createOrUpdateResource(async, waitReady, allowUpdate, resource));
+            } else {
+                promises.add(createOrUpdateResource(async, waitReady, allowUpdate, resource, type));
+            }
+            GLOBAL_CREATE_CALLBACKS.forEach(cb -> cb.accept(resource));
+        }
+
+        try {
+            CompletableFuture.allOf(promises.toArray(CompletableFuture[]::new)).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            LOGGER.error("Exception during wait for resources to be ready", cause);
+            throw new RuntimeException(cause.getMessage(), cause);
+        }
+    }
+
+    /**
+     * Creates a single resource with or without waiting for readiness.
+     *
+     * @param async       Flag waiting for all resources on the end
+     * @param waitReady   Flag indicating whether to wait for readiness.
+     * @param allowUpdate Flag indicating if update resource is allowed
+     * @param resource    The resource to create.
+     * @param <T>         The type of the resources.
+     * @return a CompletableFuture promise that will complete when the resource is
+     *         created/updated or when the resource becomes ready, if waitReady is
+     *         true.
+     */
+    private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateResource(
+            boolean async, boolean waitReady, boolean allowUpdate, T resource) {
+
+        CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
+            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            try {
                 if (allowUpdate && kubeClient().getClient().resource(resource).get() != null) {
                     LoggerUtils.logResource("Updating", resource);
                     kubeClient().getClient().resource(resource).update();
@@ -596,46 +631,68 @@ public final class KubeResourceManager {
                     LoggerUtils.logResource("Creating", resource);
                     kubeClient().getClient().resource(resource).create();
                 }
-                if (waitReady) {
-                    CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                        OPERATION_SEMAPHORE.get().acquireUninterruptibly();
-                        try {
-                            assertTrue(waitResourceCondition(resource,
-                                    new ResourceCondition<>(p -> {
-                                        if (isResourceWithReadiness(resource)) {
-                                            return kubeClient().getClient().resource(resource).isReady();
-                                        }
-                                        return kubeClient().getClient().resource(resource) != null;
-                                    }, "ready")),
-                                "Timed out waiting for " + resource.getKind() + "/" +
-                                    resource.getMetadata().getName());
-                        } finally {
-                            OPERATION_SEMAPHORE.get().release();
-                        }
-                    }, EXECUTOR);
-                    if (async) {
-                        waiters.add(cf);
-                    } else {
-                        try {
-                            cf.get(KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM, TimeUnit.MILLISECONDS);
-                        } catch (TimeoutException e) {
-                            LOGGER.error("Timeout waiting for resource {}/{} to be ready",
-                                resource.getMetadata().getNamespace(),
-                                resource.getMetadata().getName(),
-                                e
-                            );
-                            throw new RuntimeException(e.getMessage(), e);
-                        } catch (InterruptedException | ExecutionException e) {
-                            LOGGER.error("Exception during wait for resource {}/{} to be ready",
-                                resource.getMetadata().getNamespace(),
-                                resource.getMetadata().getName(),
-                                e
-                            );
-                            throw new RuntimeException(e.getMessage(), e);
-                        }
-                    }
+            } finally {
+                OPERATION_SEMAPHORE.get().release();
+            }
+        }, EXECUTOR);
+
+        if (!waitReady) {
+            return promise;
+        }
+
+        promise = promise.thenRunAsync(() -> {
+            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            try {
+                assertTrue(waitResourceCondition(resource,
+                        new ResourceCondition<>(p -> {
+                            if (isResourceWithReadiness(resource)) {
+                                return kubeClient().getClient().resource(resource).isReady();
+                            }
+                            return kubeClient().getClient().resource(resource) != null;
+                        }, "ready")),
+                    "Timed out waiting for " + resource.getKind() + "/" +
+                        resource.getMetadata().getName());
+            } finally {
+                OPERATION_SEMAPHORE.get().release();
+            }
+        }, EXECUTOR);
+
+        if (async) {
+            return promise;
+        } else {
+            promise.whenComplete((nothing, error) -> {
+                if (error != null) {
+                    LOGGER.error("Exception during wait for resource {}/{} to be ready",
+                        resource.getMetadata().getNamespace(),
+                        resource.getMetadata().getName(),
+                        error
+                    );
                 }
-            } else {
+            }).join(); // will throw CompletionException when error != null
+
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    /**
+     * Creates a single resource with or without waiting for readiness.
+     *
+     * @param async       Flag waiting for all resources on the end
+     * @param waitReady   Flag indicating whether to wait for readiness.
+     * @param allowUpdate Flag indicating if update resource is allowed
+     * @param resource    The resource to create.
+     * @param type        The resource type helper
+     * @param <T>         The type of the resources.
+     * @return a CompletableFuture promise that will complete when the resource is
+     *         created/updated or when the resource becomes ready, if waitReady is
+     *         true.
+     */
+    private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateResource(
+            boolean async, boolean waitReady, boolean allowUpdate, T resource, ResourceType<T> type) {
+
+        CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
+            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            try {
                 if (allowUpdate && kubeClient().getClient().resource(resource).get() != null) {
                     LoggerUtils.logResource("Updating", resource);
                     type.update(resource);
@@ -643,51 +700,43 @@ public final class KubeResourceManager {
                     LoggerUtils.logResource("Creating", resource);
                     type.create(resource);
                 }
-                if (waitReady) {
-                    long timeout = Objects.requireNonNullElse(type.getTimeoutForResourceReadiness(),
-                        KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
-                    CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                        OPERATION_SEMAPHORE.get().acquireUninterruptibly();
-                        try {
-                            assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
-                                "Timed out waiting for " + resource.getKind() + "/" +
-                                    resource.getMetadata().getName());
-                        } finally {
-                            OPERATION_SEMAPHORE.get().release();
-                        }
-                    }, EXECUTOR);
-                    if (async) {
-                        waiters.add(cf);
-                    } else {
-                        try {
-                            cf.get(type.getTimeoutForResourceReadiness(), TimeUnit.MILLISECONDS);
-                        } catch (TimeoutException e) {
-                            LOGGER.error("Timeout waiting for resource {}/{} to be ready",
-                                resource.getMetadata().getNamespace(),
-                                resource.getMetadata().getName(),
-                                e
-                            );
-                            throw new RuntimeException(e.getMessage(), e);
-                        } catch (InterruptedException | ExecutionException e) {
-                            LOGGER.error("Exception during wait for resource {}/{} to be ready",
-                                resource.getMetadata().getNamespace(),
-                                resource.getMetadata().getName(),
-                                e
-                            );
-                            throw new RuntimeException(e.getMessage(), e);
-                        }
-                    }
-                }
+            } finally {
+                OPERATION_SEMAPHORE.get().release();
             }
-            GLOBAL_CREATE_CALLBACKS.forEach(cb -> cb.accept(resource));
+        }, EXECUTOR);
+
+        if (!waitReady) {
+            return promise;
         }
-        if (!waiters.isEmpty()) {
+
+        long timeout = Objects.requireNonNullElse(type.getTimeoutForResourceReadiness(),
+            KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
+
+        promise = promise.thenRunAsync(() -> {
+            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
             try {
-                CompletableFuture.allOf(waiters.toArray(new CompletableFuture[0])).get();
-            } catch (InterruptedException | ExecutionException e) {
-                LOGGER.error("Exception during wait for resources to be ready", e);
-                throw new RuntimeException(e.getMessage(), e);
+                assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
+                    "Timed out waiting for " + resource.getKind() + "/" +
+                        resource.getMetadata().getName());
+            } finally {
+                OPERATION_SEMAPHORE.get().release();
             }
+        }, EXECUTOR);
+
+        if (async) {
+            return promise;
+        } else {
+            promise.whenComplete((nothing, error) -> {
+                if (error != null) {
+                    LOGGER.error("Exception during wait for resource {}/{} to be ready",
+                        resource.getMetadata().getNamespace(),
+                        resource.getMetadata().getName(),
+                        error
+                    );
+                }
+            }).join(); // will throw CompletionException when error != null
+
+            return CompletableFuture.completedFuture(null);
         }
     }
 
