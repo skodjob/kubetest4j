@@ -172,6 +172,16 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         // Clean up class namespaces (only those created by the test)
         classNamespaceService.cleanupClassNamespaces(context);
 
+        // Restore previous resource types to prevent leaking to next class
+        ResourceType<?>[] previousTypes = contextStoreHelper.getPreviousResourceTypes(context);
+        if (previousTypes != null) {
+            KubeResourceManager resourceManager = getResourceManager(context);
+            if (resourceManager != null) {
+                resourceManager.setResourceTypes(previousTypes);
+                LOGGER.debug("Restored previous resource types ({} type(s))", previousTypes.length);
+            }
+        }
+
         // Clean up ThreadLocal variables to prevent thread reuse issues
         cleanupThreadLocalVariables(context);
 
@@ -305,7 +315,11 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
     /**
      * Registers resource types declared via {@code @KubernetesTest(resourceTypes = {...})}.
-     * Each class is instantiated via its no-arg constructor and registered with the resource manager.
+     * Each class is instantiated via its no-arg constructor and registered globally via
+     * {@link KubeResourceManager#setResourceTypes(ResourceType[])}.
+     * <p>
+     * The previous global types are saved and restored in {@link #afterAll} to prevent
+     * leaking state between test classes.
      *
      * @param context         the extension context
      * @param resourceManager the resource manager to register types with
@@ -327,6 +341,9 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
                         + ". Ensure it has a public no-argument constructor.", e);
             }
         }
+
+        // Save current types so they can be restored in afterAll
+        contextStoreHelper.putPreviousResourceTypes(context, resourceManager.getResourceTypes());
 
         resourceManager.setResourceTypes(types);
         LOGGER.debug("Registered {} resource type(s) from @KubernetesTest annotation", types.length);

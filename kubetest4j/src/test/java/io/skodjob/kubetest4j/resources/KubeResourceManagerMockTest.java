@@ -10,6 +10,7 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.NamespaceableResource;
 import io.skodjob.kubetest4j.annotations.TestVisualSeparator;
 import io.skodjob.kubetest4j.clients.KubeClient;
+import io.skodjob.kubetest4j.interfaces.ResourceType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -89,6 +90,46 @@ public class KubeResourceManagerMockTest {
         // Test that deleteResourceAsyncWait with multiple resources completes successfully
         assertDoesNotThrow(() -> kubeResourceManager.deleteResourceAsyncWait(myNamespace, mySecondNamespace),
             "deleteResourceAsyncWait with multiple resources should complete successfully");
+    }
+
+    @Test
+    void testGetResourceTypesReturnsCurrentTypes() {
+        // Given - save original types for restore
+        ResourceType<?>[] originalTypes = kubeResourceManager.getResourceTypes();
+
+        try {
+            // When - set resource types to empty
+            kubeResourceManager.setResourceTypes();
+
+            // Then - should return empty array
+            ResourceType<?>[] result = kubeResourceManager.getResourceTypes();
+            assertDoesNotThrow(() -> result.getClass());
+            assertTrue(result.length == 0, "Should return empty array when no types set");
+        } finally {
+            // Restore original types
+            kubeResourceManager.setResourceTypes(originalTypes);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testGetResourceTypesAfterSet() {
+        // Given - save original types for restore
+        ResourceType<?>[] originalTypes = kubeResourceManager.getResourceTypes();
+        ResourceType<Namespace> mockType = mock(ResourceType.class);
+
+        try {
+            // When
+            kubeResourceManager.setResourceTypes(mockType);
+
+            // Then
+            ResourceType<?>[] result = kubeResourceManager.getResourceTypes();
+            assertTrue(result.length == 1, "Should return 1 type after setting");
+            assertTrue(result[0] == mockType, "Should return the mock type");
+        } finally {
+            // Restore original types
+            kubeResourceManager.setResourceTypes(originalTypes);
+        }
     }
 
     @Test
