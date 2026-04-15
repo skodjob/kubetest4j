@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -103,8 +105,7 @@ public class KubeResourceManagerMockTest {
 
             // Then - should return empty array
             ResourceType<?>[] result = kubeResourceManager.getResourceTypes();
-            assertDoesNotThrow(() -> result.getClass());
-            assertTrue(result.length == 0, "Should return empty array when no types set");
+            assertEquals(0, result.length, "Should return empty array when no types set");
         } finally {
             // Restore original types
             kubeResourceManager.setResourceTypes(originalTypes);
@@ -124,8 +125,8 @@ public class KubeResourceManagerMockTest {
 
             // Then
             ResourceType<?>[] result = kubeResourceManager.getResourceTypes();
-            assertTrue(result.length == 1, "Should return 1 type after setting");
-            assertTrue(result[0] == mockType, "Should return the mock type");
+            assertEquals(1, result.length, "Should return 1 type after setting");
+            assertSame(mockType, result[0], "Should return the mock type");
         } finally {
             // Restore original types
             kubeResourceManager.setResourceTypes(originalTypes);

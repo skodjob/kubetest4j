@@ -81,6 +81,13 @@
             <artifactId>slf4j-api</artifactId>
         </dependency>
 
+        <!-- Kubernetes resource types for integration test examples -->
+        <dependency>
+            <groupId>io.skodjob.kubetest4j</groupId>
+            <artifactId>kubernetes-resources</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
