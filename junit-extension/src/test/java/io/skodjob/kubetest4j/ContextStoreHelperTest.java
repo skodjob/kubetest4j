@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
+import io.skodjob.kubetest4j.interfaces.ResourceType;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -347,6 +348,62 @@ class ContextStoreHelperTest {
             // Then
             assertNotNull(result);
             assertTrue(result.isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("Resource Types Store Operations Tests")
+    class ResourceTypesStoreOperationsTests {
+
+        @Test
+        @DisplayName("Should put and get previous resource types")
+        void shouldPutAndGetPreviousResourceTypes() {
+            // Given
+            @SuppressWarnings("unchecked")
+            ResourceType<Namespace> mockType = mock(ResourceType.class);
+            ResourceType<?>[] types = new ResourceType<?>[]{mockType};
+            when(store.get("kubernetes.test.previousResourceTypes", ResourceType[].class)).thenReturn(types);
+
+            // When
+            storeHelper.putPreviousResourceTypes(extensionContext, types);
+            ResourceType<?>[] result = storeHelper.getPreviousResourceTypes(extensionContext);
+
+            // Then
+            verify(store).put("kubernetes.test.previousResourceTypes", types);
+            assertNotNull(result);
+            assertEquals(1, result.length);
+            assertEquals(mockType, result[0]);
+        }
+
+        @Test
+        @DisplayName("Should return null when no previous resource types stored")
+        void shouldReturnNullWhenNoPreviousResourceTypes() {
+            // Given
+            when(store.get("kubernetes.test.previousResourceTypes", ResourceType[].class)).thenReturn(null);
+
+            // When
+            ResourceType<?>[] result = storeHelper.getPreviousResourceTypes(extensionContext);
+
+            // Then
+            assertNull(result);
+        }
+
+        @Test
+        @DisplayName("Should handle empty resource types array")
+        void shouldHandleEmptyResourceTypesArray() {
+            // Given
+            ResourceType<?>[] emptyTypes = new ResourceType<?>[0];
+            when(store.get("kubernetes.test.previousResourceTypes", ResourceType[].class))
+                .thenReturn(emptyTypes);
+
+            // When
+            storeHelper.putPreviousResourceTypes(extensionContext, emptyTypes);
+            ResourceType<?>[] result = storeHelper.getPreviousResourceTypes(extensionContext);
+
+            // Then
+            verify(store).put("kubernetes.test.previousResourceTypes", emptyTypes);
+            assertNotNull(result);
+            assertEquals(0, result.length);
         }
     }
 

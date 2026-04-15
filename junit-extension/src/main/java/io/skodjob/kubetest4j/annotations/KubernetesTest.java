@@ -5,10 +5,12 @@
 package io.skodjob.kubetest4j.annotations;
 
 import io.skodjob.kubetest4j.KubernetesTestExtension;
+import io.skodjob.kubetest4j.interfaces.ResourceType;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -22,9 +24,13 @@ import java.lang.annotation.Target;
  * and {@link MethodNamespace} (per-test-method, instance fields/parameters) annotations
  * directly on test fields, rather than in this annotation.
  * <p>
+ * This annotation is {@code @Inherited}, so it propagates to subclasses. An abstract base class
+ * can declare {@code @KubernetesTest} with shared configuration, and child classes will inherit it.
+ * Child classes can override by re-declaring {@code @KubernetesTest} with different parameters.
+ * <p>
  * Usage:
  * <pre>
- * &#64;KubernetesTest
+ * &#64;KubernetesTest(resourceTypes = {NamespaceType.class, DeploymentType.class})
  * class MyKubernetesTest {
  *     &#64;ClassNamespace(name = "my-test-ns")
  *     static Namespace testNs;
@@ -41,9 +47,30 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
+@Inherited
 @Documented
 @ExtendWith(KubernetesTestExtension.class)
 public @interface KubernetesTest {
+
+    // ===============================
+    // Resource Type Configuration
+    // ===============================
+
+    /**
+     * Resource type implementations to register with KubeResourceManager.
+     * Each class must implement {@link ResourceType} and have a no-argument constructor.
+     * The types are instantiated and registered in beforeAll, replacing any previously set types.
+     * <p>
+     * This is the declarative alternative to calling
+     * {@code KubeResourceManager.get().setResourceTypes(...)} in a static block.
+     *
+     * @return array of ResourceType implementation classes
+     */
+    Class<? extends ResourceType<?>>[] resourceTypes() default {};
+
+    // ===============================
+    // Cleanup & Storage Configuration
+    // ===============================
 
     /**
      * When to clean up resources created during the test.

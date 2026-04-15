@@ -7,6 +7,7 @@ package io.skodjob.kubetest4j;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
+import io.skodjob.kubetest4j.interfaces.ResourceType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.annotation.Inherited;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.time.LocalDateTime;
@@ -284,6 +286,117 @@ class KubernetesTestExtensionTest {
         }
     }
 
+    @Nested
+    @DisplayName("Annotation Inheritance Tests")
+    class AnnotationInheritanceTests {
+
+        @Test
+        @DisplayName("@KubernetesTest should have @Inherited annotation")
+        void shouldHaveInheritedAnnotation() {
+            assertTrue(KubernetesTest.class.isAnnotationPresent(Inherited.class),
+                "@KubernetesTest should be marked with @Inherited");
+        }
+
+        @Test
+        @DisplayName("Child class should inherit @KubernetesTest from parent")
+        void childShouldInheritAnnotation() {
+            KubernetesTest annotation = ChildTestClass.class.getAnnotation(KubernetesTest.class);
+
+            assertNotNull(annotation, "Child should inherit @KubernetesTest from parent");
+            assertEquals(CleanupStrategy.AUTOMATIC, annotation.cleanup());
+        }
+
+        @Test
+        @DisplayName("Child class should be able to override @KubernetesTest")
+        void childShouldOverrideAnnotation() {
+            KubernetesTest annotation = OverrideChildTestClass.class.getAnnotation(KubernetesTest.class);
+
+            assertNotNull(annotation, "Override child should have @KubernetesTest");
+            assertEquals(CleanupStrategy.MANUAL, annotation.cleanup());
+        }
+
+        @Test
+        @DisplayName("Overriding child with own resourceTypes should use its own")
+        void overridingChildWithOwnResourceTypesShouldUseOwn() {
+            KubernetesTest annotation = ChildWithOwnResourceTypes.class
+                .getAnnotation(KubernetesTest.class);
+
+            assertNotNull(annotation);
+            // Child declared its own resourceTypes — should use those, not parent's
+            assertEquals(1, annotation.resourceTypes().length);
+            assertEquals(AnotherStubResourceType.class, annotation.resourceTypes()[0]);
+        }
+
+        @Test
+        @DisplayName("Overriding child without resourceTypes should still find parent's via hierarchy walk")
+        void overridingChildWithoutResourceTypesShouldFindParentsViaHierarchy() {
+            // Java's @Inherited gives ChildOverridingResourceTypes its OWN annotation (cleanup=MANUAL)
+            // with empty resourceTypes. But resolveResourceTypes() walks up the hierarchy
+            // and finds ParentWithResourceTypes's resourceTypes.
+            KubernetesTest childAnnotation = ChildOverridingResourceTypes.class
+                .getAnnotation(KubernetesTest.class);
+
+            assertNotNull(childAnnotation);
+            // The child's annotation itself has empty resourceTypes (Java replaced the whole annotation)
+            assertEquals(0, childAnnotation.resourceTypes().length);
+
+            // But the parent's annotation still has resourceTypes
+            KubernetesTest parentAnnotation = ParentWithResourceTypes.class
+                .getDeclaredAnnotation(KubernetesTest.class);
+            assertNotNull(parentAnnotation);
+            assertEquals(1, parentAnnotation.resourceTypes().length,
+                "Parent's own annotation still has resourceTypes — resolveResourceTypes() will find it");
+        }
+
+        @Test
+        @DisplayName("Non-overriding child should inherit parent's resourceTypes")
+        void nonOverridingChildShouldInheritResourceTypes() {
+            KubernetesTest annotation = ChildInheritingResourceTypes.class
+                .getAnnotation(KubernetesTest.class);
+
+            assertNotNull(annotation);
+            assertTrue(annotation.resourceTypes().length > 0,
+                "Inheriting child should have parent's resourceTypes");
+        }
+    }
+
+    @Nested
+    @DisplayName("ResourceTypes Annotation Tests")
+    class ResourceTypesAnnotationTests {
+
+        @Test
+        @DisplayName("@KubernetesTest should have resourceTypes parameter")
+        void shouldHaveResourceTypesParameter() throws NoSuchMethodException {
+            assertNotNull(KubernetesTest.class.getDeclaredMethod("resourceTypes"),
+                "@KubernetesTest should have resourceTypes() method");
+        }
+
+        @Test
+        @DisplayName("resourceTypes default should be empty array")
+        void resourceTypesDefaultShouldBeEmpty() {
+            KubernetesTest annotation = TestClass.class.getAnnotation(KubernetesTest.class);
+
+            assertNotNull(annotation);
+            assertEquals(0, annotation.resourceTypes().length,
+                "Default resourceTypes should be empty");
+        }
+
+        @Test
+        @DisplayName("Should be able to declare resourceTypes on annotation")
+        void shouldDeclareResourceTypes() {
+            KubernetesTest annotation = ParentWithResourceTypes.class
+                .getAnnotation(KubernetesTest.class);
+
+            assertNotNull(annotation);
+            assertEquals(1, annotation.resourceTypes().length);
+            assertEquals(StubResourceType.class, annotation.resourceTypes()[0]);
+        }
+    }
+
+    // ===============================
+    // Test Fixtures for Annotation Tests
+    // ===============================
+
     // Test Class for Method Testing
     @KubernetesTest
     static class TestClass {
@@ -291,6 +404,93 @@ class KubernetesTestExtensionTest {
         }
 
         public void testMethodNoAnnotation(String param) {
+        }
+    }
+
+    // Parent with default @KubernetesTest — child inherits via @Inherited
+    @KubernetesTest(cleanup = CleanupStrategy.AUTOMATIC)
+    abstract static class ParentTestClass {
+    }
+
+    // Child that inherits parent's annotation (no @KubernetesTest declared)
+    static class ChildTestClass extends ParentTestClass {
+    }
+
+    // Child that overrides parent's annotation
+    @KubernetesTest(cleanup = CleanupStrategy.MANUAL)
+    static class OverrideChildTestClass extends ParentTestClass {
+    }
+
+    // Parent with resourceTypes declared
+    @KubernetesTest(resourceTypes = {StubResourceType.class})
+    abstract static class ParentWithResourceTypes {
+    }
+
+    // Child that inherits parent's resourceTypes (no annotation override)
+    static class ChildInheritingResourceTypes extends ParentWithResourceTypes {
+    }
+
+    // Child that overrides config without declaring resourceTypes
+    // Java replaces the whole annotation, but resolveResourceTypes() walks hierarchy
+    @KubernetesTest(cleanup = CleanupStrategy.MANUAL)
+    static class ChildOverridingResourceTypes extends ParentWithResourceTypes {
+    }
+
+    // Child that declares its own resourceTypes (should use its own, not parent's)
+    @KubernetesTest(resourceTypes = {AnotherStubResourceType.class})
+    static class ChildWithOwnResourceTypes extends ParentWithResourceTypes {
+    }
+
+    /**
+     * Another stub ResourceType for testing that child can declare its own types.
+     */
+    static class AnotherStubResourceType extends StubResourceType {
+        @Override
+        public String getKind() {
+            return "Secret";
+        }
+    }
+
+    /**
+     * Stub ResourceType for testing annotation parsing only.
+     * Does not need a real Kubernetes client.
+     */
+    static class StubResourceType implements ResourceType<io.fabric8.kubernetes.api.model.ConfigMap> {
+        @Override
+        public io.fabric8.kubernetes.client.dsl.NonNamespaceOperation<?, ?, ?> getClient() {
+            return null;
+        }
+
+        @Override
+        public String getKind() {
+            return "ConfigMap";
+        }
+
+        @Override
+        public void create(io.fabric8.kubernetes.api.model.ConfigMap resource) {
+        }
+
+        @Override
+        public void update(io.fabric8.kubernetes.api.model.ConfigMap resource) {
+        }
+
+        @Override
+        public void delete(io.fabric8.kubernetes.api.model.ConfigMap resource) {
+        }
+
+        @Override
+        public void replace(io.fabric8.kubernetes.api.model.ConfigMap resource,
+                            java.util.function.Consumer<io.fabric8.kubernetes.api.model.ConfigMap> editor) {
+        }
+
+        @Override
+        public boolean isReady(io.fabric8.kubernetes.api.model.ConfigMap resource) {
+            return true;
+        }
+
+        @Override
+        public boolean isDeleted(io.fabric8.kubernetes.api.model.ConfigMap resource) {
+            return true;
         }
     }
 }

@@ -285,6 +285,15 @@ public final class KubeResourceManager {
     }
 
     /**
+     * Returns the currently registered resource types.
+     *
+     * @return array of registered resource types (may be empty, never null)
+     */
+    public ResourceType<?>[] getResourceTypes() {
+        return GLOBAL_RESOURCE_TYPES.get();
+    }
+
+    /**
      * Add resource types for special handling by resource manager (applies to all contexts)
      *
      * @param types resource types implementation
