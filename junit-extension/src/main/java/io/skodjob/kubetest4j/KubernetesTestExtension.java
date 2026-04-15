@@ -5,7 +5,9 @@
 package io.skodjob.kubetest4j;
 
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
+import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
+import io.skodjob.kubetest4j.interfaces.ResourceType;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
 import org.jspecify.annotations.NonNull;
@@ -131,6 +133,9 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
         resourceManager.setTestContext(context);
         contextStoreHelper.putResourceManager(context, resourceManager);
+
+        // Register resource types from @KubernetesTest annotation
+        registerResourceTypes(context, resourceManager);
 
         // Configure YAML storage if enabled
         if (testConfig.storeYaml()) {
@@ -297,6 +302,69 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         }
     }
 
+
+    /**
+     * Registers resource types declared via {@code @KubernetesTest(resourceTypes = {...})}.
+     * Each class is instantiated via its no-arg constructor and registered with the resource manager.
+     *
+     * @param context         the extension context
+     * @param resourceManager the resource manager to register types with
+     */
+    private void registerResourceTypes(ExtensionContext context, KubeResourceManager resourceManager) {
+        Class<? extends ResourceType<?>>[] typeClasses = resolveResourceTypes(context);
+        if (typeClasses.length == 0) {
+            return;
+        }
+
+        ResourceType<?>[] types = new ResourceType<?>[typeClasses.length];
+
+        for (int i = 0; i < typeClasses.length; i++) {
+            try {
+                types[i] = typeClasses[i].getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                    "Failed to instantiate ResourceType: " + typeClasses[i].getName()
+                        + ". Ensure it has a public no-argument constructor.", e);
+            }
+        }
+
+        resourceManager.setResourceTypes(types);
+        LOGGER.debug("Registered {} resource type(s) from @KubernetesTest annotation", types.length);
+    }
+
+    /**
+     * Resolves resourceTypes by walking the class hierarchy.
+     * If the current class's annotation has resourceTypes, use them.
+     * Otherwise, walk up parent classes to find the nearest ancestor with resourceTypes declared.
+     * This allows child classes to override other annotation parameters (cleanup, collectLogs, etc.)
+     * without losing the parent's resourceTypes.
+     *
+     * @param context the extension context
+     * @return the resolved resource type classes, or empty array if none found
+     */
+    @SuppressWarnings("unchecked")
+    private Class<? extends ResourceType<?>>[] resolveResourceTypes(ExtensionContext context) {
+        // Check the current class's annotation first
+        KubernetesTest annotation = configurationService.getKubernetesTestAnnotation(context);
+        if (annotation != null && annotation.resourceTypes().length > 0) {
+            return annotation.resourceTypes();
+        }
+
+        // Walk up the class hierarchy looking for resourceTypes in parent annotations.
+        // Uses getDeclaredAnnotation() to check each class's own annotation only,
+        // avoiding @Inherited which would return a grandparent's annotation at the parent level.
+        Class<?> current = context.getRequiredTestClass().getSuperclass();
+        while (current != null && current != Object.class) {
+            KubernetesTest parentAnnotation = current.getDeclaredAnnotation(KubernetesTest.class);
+            if (parentAnnotation != null && parentAnnotation.resourceTypes().length > 0) {
+                LOGGER.debug("Inherited resourceTypes from parent class {}", current.getName());
+                return parentAnnotation.resourceTypes();
+            }
+            current = current.getSuperclass();
+        }
+
+        return new Class[0];
+    }
 
     /**
      * Handle automatic cleanup by delegating to the same logic as @ResourceManager.

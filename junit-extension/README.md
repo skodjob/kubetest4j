@@ -247,10 +247,13 @@ class LogCollectionTest {
 
 ### @KubernetesTest
 
-Main annotation to enable Kubernetes test features:
+Main annotation to enable Kubernetes test features. This annotation is `@Inherited`, so it propagates to subclasses (see [Annotation Inheritance](#annotation-inheritance)).
 
 ```java
 @KubernetesTest(
+    // Resource types (declarative alternative to setResourceTypes())
+    resourceTypes = {NamespaceType.class, DeploymentType.class},
+
     // Resource management
     cleanup = CleanupStrategy.AUTOMATIC,  // Cleanup strategy
     storeYaml = true,                      // Store resource YAMLs
@@ -410,6 +413,13 @@ void testResourceInjection(
 
 `value` accepts either a classpath resource name such as `deployment.yaml` or a filesystem path.
 For multi-document YAML manifests, kubetest4j applies all resources from the manifest and injects the one matching the field or parameter type, optionally narrowed by `type` and `name`.
+
+**Lifecycle:** Resources are loaded from YAML and **created on the cluster** during field injection:
+- **Instance fields** (`@InjectResource` on non-static fields) — created in `beforeEach`, once per test method. Cleaned up automatically after each test.
+- **Method parameters** (`@InjectResource` on test method parameters) — created just before the test method runs.
+- **With `@TestInstance(Lifecycle.PER_CLASS)`** — instance fields are injected in `beforeAll`, so resources are created once for the entire class.
+
+Use `waitForReady = true` (default) to wait for the resource to become ready, or `waitForReady = false` to create without waiting.
 
 ## Cleanup Strategies
 
@@ -691,6 +701,57 @@ See comprehensive examples in the test directory:
 - **[`PerMethodNamespaceIT`](src/test/java/io/skodjob/kubetest4j/examples/PerMethodNamespaceIT.java)** - Per-method namespace isolation with `@MethodNamespace`
 - **[`ParallelExecutionIT`](src/test/java/io/skodjob/kubetest4j/examples/ParallelExecutionIT.java)** - Parallel test execution with `@MethodNamespace`
 - **[`LogCollectionIT`](src/test/java/io/skodjob/kubetest4j/examples/LogCollectionIT.java)** - Log collection strategies and configuration
+
+## Annotation Inheritance
+
+`@KubernetesTest` is `@Inherited`, so you can define a shared base class and have child classes inherit the configuration:
+
+```java
+@KubernetesTest(
+    cleanup = CleanupStrategy.AUTOMATIC,
+    resourceTypes = {NamespaceType.class, DeploymentType.class},
+    collectLogs = true,
+    logCollectionStrategy = LogCollectionStrategy.ON_FAILURE
+)
+abstract class AbstractIT {
+    // Shared setup, helpers, etc.
+}
+
+// Inherits everything from parent — no annotation needed
+class BasicIT extends AbstractIT {
+    @ClassNamespace(name = "basic-test")
+    static Namespace testNs;
+
+    @Test
+    void testSomething() { ... }
+}
+
+// Override: child re-declares @KubernetesTest with different config
+@KubernetesTest(cleanup = CleanupStrategy.MANUAL)
+class ManualCleanupIT extends AbstractIT {
+    // cleanup is MANUAL, but resourceTypes are still inherited from parent
+}
+```
+
+### resourceTypes Inheritance
+
+The `resourceTypes` parameter has special merge behavior. When a child overrides `@KubernetesTest` but doesn't declare its own `resourceTypes`, it inherits the parent's `resourceTypes` automatically. This means you can override individual parameters without losing the parent's resource type registrations:
+
+```java
+@KubernetesTest(resourceTypes = {NamespaceType.class, DeploymentType.class})
+abstract class AbstractIT {}
+
+// Inherits parent's resourceTypes via @Inherited
+class ChildIT extends AbstractIT {}
+
+// Overrides cleanup but keeps parent's resourceTypes
+@KubernetesTest(cleanup = CleanupStrategy.MANUAL)
+class OverrideIT extends AbstractIT {}
+
+// Declares own resourceTypes — uses these instead of parent's
+@KubernetesTest(resourceTypes = {NamespaceType.class, ServiceType.class})
+class FullOverrideIT extends AbstractIT {}
+```
 
 ## Important Notes
 

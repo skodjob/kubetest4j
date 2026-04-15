@@ -67,9 +67,12 @@ Abstraction for kubectl/oc CLI operations with fluent API.
 
 ### JUnit Extension (`junit-extension/.../KubernetesTestExtension.java`)
 `@KubernetesTest` annotation configures:
+- `resourceTypes` - declarative ResourceType registration (e.g., `{NamespaceType.class, DeploymentType.class}`)
 - `cleanup` - AUTOMATIC or MANUAL
 - `collectLogs` / `logCollectionStrategy` - log collection on failure
 - `storeYaml` / `yamlStorePath` - persist created resource YAMLs
+
+The annotation is `@Inherited` — child classes inherit parent's config. `resourceTypes` has special merge behavior: if a child overrides `@KubernetesTest` without declaring `resourceTypes`, it inherits the parent's `resourceTypes` automatically.
 
 Namespace annotations (on fields, not in `@KubernetesTest`):
 - `@ClassNamespace(name="...", labels={}, annotations={}, kubeContext="")` - class-level (static fields), created in beforeAll, deleted in afterAll. Existing namespaces are protected (used but never deleted).
@@ -153,7 +156,7 @@ kind create cluster                       # Create local cluster
 2. Implement `ResourceType<T>` interface
 3. Wrap the Fabric8 client for that resource
 4. Implement `isReady()` with proper readiness checks
-5. Register it via `KubeResourceManager.get().setResourceTypes(new YourType())`
+5. Register it via `@KubernetesTest(resourceTypes = {YourType.class})` or `KubeResourceManager.get().setResourceTypes(new YourType())`
 
 **Complete example** - use this as a template (see `DeploymentType.java`):
 ```java
@@ -305,6 +308,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @KubernetesTest(
     cleanup = CleanupStrategy.AUTOMATIC,
+    resourceTypes = {NamespaceType.class},   // Declarative ResourceType registration
     collectLogs = true,                      // Collect logs on failure
     logCollectionStrategy = LogCollectionStrategy.ON_FAILURE,
     logCollectionPath = "target/test-logs"
@@ -351,7 +355,7 @@ class MyFeatureIT {
 ```
 
 **When to use which:**
-- `@KubernetesTest` (junit-extension) - full-featured: namespace annotations (`@ClassNamespace`, `@MethodNamespace`), DI, log collection, multi-context
+- `@KubernetesTest` (junit-extension) - full-featured: namespace annotations (`@ClassNamespace`, `@MethodNamespace`), DI, log collection, multi-context, declarative `resourceTypes`, `@Inherited` for base class patterns
 - `@ResourceManager` (core) - lightweight: just resource tracking and cleanup, no namespace management or DI
 
 See more examples in `junit-extension/src/test/java/io/skodjob/kubetest4j/examples/`.

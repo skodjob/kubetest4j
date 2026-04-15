@@ -86,22 +86,28 @@ log collection, and resource cleanup - all declaratively configured.
 ```java
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.Namespace;
+import io.skodjob.kubetest4j.annotations.ClassNamespace;
 import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.InjectKubeClient;
 import io.skodjob.kubetest4j.annotations.InjectResourceManager;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
+import io.skodjob.kubetest4j.resources.NamespaceType;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @KubernetesTest(
-    namespaces = {"my-test"},
-    cleanup = CleanupStrategy.AUTOMATIC
+    cleanup = CleanupStrategy.AUTOMATIC,
+    resourceTypes = {NamespaceType.class}
 )
 class MyFirstKubernetesIT {
+
+    @ClassNamespace(name = "my-test")
+    static Namespace testNs;
 
     @InjectKubeClient
     KubeClient client;
@@ -211,7 +217,6 @@ Now that you have a working test, explore these features:
 Collect pod logs automatically when tests fail:
 ```java
 @KubernetesTest(
-    namespaces = {"my-test"},
     collectLogs = true,
     logCollectionStrategy = LogCollectionStrategy.ON_FAILURE,
     logCollectionPath = "target/test-logs"
