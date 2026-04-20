@@ -426,4 +426,279 @@ class PodUtilsTest {
         }
     }
 
+    @Test
+    void testWaitForPodsReadyWithContainerReadyTrueNoTerminated() {
+        try (MockedStatic<KubeResourceManager> ignored = mockStatic(KubeResourceManager.class)) {
+            when(KubeResourceManager.get()).thenReturn(kubeResourceManager);
+
+            @SuppressWarnings("unchecked")
+            MixedOperation<Pod, PodList, PodResource> podsOperation = mock(MixedOperation.class);
+            @SuppressWarnings("unchecked")
+            NonNamespaceOperation<Pod, PodList, PodResource> podsInNamespace = mock(NonNamespaceOperation.class);
+
+            // Container with ready=true but no terminated state
+            ContainerStatus readyContainer = new ContainerStatusBuilder()
+                .withName("running-container")
+                .withReady(true)
+                .build();
+
+            Pod pod = new PodBuilder()
+                .withNewMetadata().withName("pod-running").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(readyContainer)
+                .endStatus()
+                .build();
+
+            when(kubernetesClient.pods()).thenReturn(podsOperation);
+            when(podsOperation.inNamespace(anyString())).thenReturn(podsInNamespace);
+            when(podsInNamespace.list()).thenReturn(new PodListBuilder().withItems(pod).build());
+
+            PodUtils.waitForPodsReady("test", true, () -> { });
+        }
+    }
+
+    @Test
+    void testWaitForPodsReadyWithTerminatedCompletedNotReady() {
+        try (MockedStatic<KubeResourceManager> ignored = mockStatic(KubeResourceManager.class)) {
+            when(KubeResourceManager.get()).thenReturn(kubeResourceManager);
+
+            @SuppressWarnings("unchecked")
+            MixedOperation<Pod, PodList, PodResource> podsOperation = mock(MixedOperation.class);
+            @SuppressWarnings("unchecked")
+            NonNamespaceOperation<Pod, PodList, PodResource> podsInNamespace = mock(NonNamespaceOperation.class);
+
+            // Container with ready=false but terminated with "Completed"
+            ContainerStatus completedContainer = new ContainerStatusBuilder()
+                .withName("completed-container")
+                .withReady(false)
+                .withState(new ContainerStateBuilder()
+                    .withTerminated(new ContainerStateTerminatedBuilder()
+                        .withReason("Completed").build())
+                    .build())
+                .build();
+
+            Pod pod = new PodBuilder()
+                .withNewMetadata().withName("pod-completed").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Succeeded")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(completedContainer)
+                .endStatus()
+                .build();
+
+            when(kubernetesClient.pods()).thenReturn(podsOperation);
+            when(podsOperation.inNamespace(anyString())).thenReturn(podsInNamespace);
+            when(podsInNamespace.list()).thenReturn(new PodListBuilder().withItems(pod).build());
+
+            PodUtils.waitForPodsReady("test", true, () -> { });
+        }
+    }
+
+    @Test
+    void testWaitForPodsReadyWithNullContainerStatuses() {
+        try (MockedStatic<KubeResourceManager> ignored = mockStatic(KubeResourceManager.class)) {
+            when(KubeResourceManager.get()).thenReturn(kubeResourceManager);
+
+            @SuppressWarnings("unchecked")
+            MixedOperation<Pod, PodList, PodResource> podsOperation = mock(MixedOperation.class);
+            @SuppressWarnings("unchecked")
+            NonNamespaceOperation<Pod, PodList, PodResource> podsInNamespace = mock(NonNamespaceOperation.class);
+            @SuppressWarnings("unchecked")
+            FilterWatchListDeletable<Pod, PodList, PodResource> filteredPods = mock(FilterWatchListDeletable.class);
+
+            LabelSelector selector = new LabelSelectorBuilder()
+                .withMatchLabels(Collections.singletonMap("app", "null-cs-test"))
+                .build();
+
+            // Pod that is ready but has explicitly null containerStatuses
+            Pod podWithNullContainerStatuses = new PodBuilder()
+                .withNewMetadata().withName("pod-null-cs").withNamespace("test")
+                .addToLabels("app", "null-cs-test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .endStatus()
+                .build();
+            // Force null — PodBuilder may initialize to empty list
+            podWithNullContainerStatuses.getStatus().setContainerStatuses(null);
+
+            when(kubernetesClient.pods()).thenReturn(podsOperation);
+            when(podsOperation.inNamespace(anyString())).thenReturn(podsInNamespace);
+            when(podsInNamespace.withLabelSelector(any(LabelSelector.class))).thenReturn(filteredPods);
+
+            // First call returns pod with null containerStatuses (not ready),
+            // second call returns pod with a ready container
+            ContainerStatus readyContainer = new ContainerStatusBuilder()
+                .withName("container").withReady(true).build();
+            Pod readyPod = new PodBuilder()
+                .withNewMetadata().withName("pod-null-cs").withNamespace("test")
+                .addToLabels("app", "null-cs-test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(readyContainer)
+                .endStatus()
+                .build();
+
+            when(filteredPods.list())
+                .thenReturn(new PodListBuilder().withItems(podWithNullContainerStatuses).build())
+                .thenReturn(new PodListBuilder().withItems(readyPod).build());
+
+            PodUtils.waitForPodsReady("test", selector, 1, true, () -> { });
+        }
+    }
+
+    @Test
+    void testWaitForPodsReadyNoNamespaceWithNullContainerStatuses() {
+        try (MockedStatic<KubeResourceManager> ignored = mockStatic(KubeResourceManager.class)) {
+            when(KubeResourceManager.get()).thenReturn(kubeResourceManager);
+
+            @SuppressWarnings("unchecked")
+            MixedOperation<Pod, PodList, PodResource> podsOperation = mock(MixedOperation.class);
+            @SuppressWarnings("unchecked")
+            NonNamespaceOperation<Pod, PodList, PodResource> podsInNamespace = mock(NonNamespaceOperation.class);
+
+            // Pod ready but with explicitly null containerStatuses
+            Pod podNoCs = new PodBuilder()
+                .withNewMetadata().withName("pod-no-cs").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .endStatus()
+                .build();
+            // Force null — PodBuilder may initialize to empty list
+            podNoCs.getStatus().setContainerStatuses(null);
+
+            // Pod ready with a ready container
+            ContainerStatus readyContainer = new ContainerStatusBuilder()
+                .withName("c1").withReady(true).build();
+            Pod readyPod = new PodBuilder()
+                .withNewMetadata().withName("pod-no-cs").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(readyContainer)
+                .endStatus()
+                .build();
+
+            when(kubernetesClient.pods()).thenReturn(podsOperation);
+            when(podsOperation.inNamespace(anyString())).thenReturn(podsInNamespace);
+            when(podsInNamespace.list())
+                .thenReturn(new PodListBuilder().withItems(podNoCs).build())
+                .thenReturn(new PodListBuilder().withItems(readyPod).build());
+
+            PodUtils.waitForPodsReady("test", true, () -> { });
+        }
+    }
+
+    @Test
+    void testWaitForPodsReadyWithContainerNullState() {
+        try (MockedStatic<KubeResourceManager> ignored = mockStatic(KubeResourceManager.class)) {
+            when(KubeResourceManager.get()).thenReturn(kubeResourceManager);
+
+            @SuppressWarnings("unchecked")
+            MixedOperation<Pod, PodList, PodResource> podsOperation = mock(MixedOperation.class);
+            @SuppressWarnings("unchecked")
+            NonNamespaceOperation<Pod, PodList, PodResource> podsInNamespace = mock(NonNamespaceOperation.class);
+
+            // Container with ready=false and null state — tests isContainerReady null path
+            ContainerStatus noStateContainer = new ContainerStatusBuilder()
+                .withName("no-state")
+                .withReady(false)
+                .build();
+
+            Pod podNotReady = new PodBuilder()
+                .withNewMetadata().withName("pod-no-state").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(noStateContainer)
+                .endStatus()
+                .build();
+
+            // Ready pod for second poll
+            ContainerStatus readyContainer = new ContainerStatusBuilder()
+                .withName("no-state").withReady(true).build();
+            Pod readyPod = new PodBuilder()
+                .withNewMetadata().withName("pod-no-state").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(readyContainer)
+                .endStatus()
+                .build();
+
+            when(kubernetesClient.pods()).thenReturn(podsOperation);
+            when(podsOperation.inNamespace(anyString())).thenReturn(podsInNamespace);
+            when(podsInNamespace.list())
+                .thenReturn(new PodListBuilder().withItems(podNotReady).build())
+                .thenReturn(new PodListBuilder().withItems(readyPod).build());
+
+            PodUtils.waitForPodsReady("test", true, () -> { });
+        }
+    }
+
+    @Test
+    void testWaitForPodsReadyWithTerminatedNonCompletedReason() {
+        try (MockedStatic<KubeResourceManager> ignored = mockStatic(KubeResourceManager.class)) {
+            when(KubeResourceManager.get()).thenReturn(kubeResourceManager);
+
+            @SuppressWarnings("unchecked")
+            MixedOperation<Pod, PodList, PodResource> podsOperation = mock(MixedOperation.class);
+            @SuppressWarnings("unchecked")
+            NonNamespaceOperation<Pod, PodList, PodResource> podsInNamespace = mock(NonNamespaceOperation.class);
+
+            // Container terminated with "Error" — should NOT be considered ready
+            ContainerStatus errorContainer = new ContainerStatusBuilder()
+                .withName("error-container")
+                .withReady(false)
+                .withState(new ContainerStateBuilder()
+                    .withTerminated(new ContainerStateTerminatedBuilder()
+                        .withReason("Error").build())
+                    .build())
+                .build();
+
+            Pod podWithError = new PodBuilder()
+                .withNewMetadata().withName("pod-error").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(errorContainer)
+                .endStatus()
+                .build();
+
+            // Ready pod for second poll
+            ContainerStatus readyContainer = new ContainerStatusBuilder()
+                .withName("error-container").withReady(true).build();
+            Pod readyPod = new PodBuilder()
+                .withNewMetadata().withName("pod-error").withNamespace("test").endMetadata()
+                .withNewStatus()
+                .withPhase("Running")
+                .withConditions(new PodConditionBuilder()
+                    .withType("Ready").withStatus("True").build())
+                .withContainerStatuses(readyContainer)
+                .endStatus()
+                .build();
+
+            when(kubernetesClient.pods()).thenReturn(podsOperation);
+            when(podsOperation.inNamespace(anyString())).thenReturn(podsInNamespace);
+            when(podsInNamespace.list())
+                .thenReturn(new PodListBuilder().withItems(podWithError).build())
+                .thenReturn(new PodListBuilder().withItems(readyPod).build());
+
+            PodUtils.waitForPodsReady("test", true, () -> { });
+        }
+    }
+
 }

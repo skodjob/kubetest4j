@@ -808,11 +808,12 @@ public final class KubeResourceManager {
                 if (waitForDeletion) {
                     decideDeleteWaitAsync(waiters, async, resource);
                 }
+
+                GLOBAL_DELETE_CALLBACKS.forEach(cb -> cb.accept(resource));
             } catch (Exception e) {
                 LOGGER.error("Deletion of {}/{} failed with the following error: {}",
                     resource.getKind(), resource.getMetadata().getName(), e.getMessage(), e);
             }
-            GLOBAL_DELETE_CALLBACKS.forEach(cb -> cb.accept(resource));
         }
 
         handleAsyncDeletion(waiters);
@@ -877,11 +878,11 @@ public final class KubeResourceManager {
                 return;
             } catch (CompletionException ce) {
                 Throwable cause = ce.getCause();
-                if (canRetry(cause) || ++attempt >= retries) {
+                if (!isConflictRetryable(cause) || ++attempt >= retries) {
                     throw (cause instanceof RuntimeException re) ? re : new RuntimeException(cause);
                 }
             } catch (KubernetesClientException kce) {
-                if (canRetry(kce) || ++attempt >= retries) {
+                if (!isConflictRetryable(kce) || ++attempt >= retries) {
                     throw kce;
                 }
             }
@@ -889,14 +890,15 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Checks if the {@link Throwable} is instance of {@link KubernetesClientException}
-     * and if the code is 409 - which means that we got conflict exception during operation.
+     * Checks if the {@link Throwable} is a conflict (HTTP 409) from the Kubernetes API,
+     * meaning the operation can be retried on a fresh resource version.
      *
      * @param t throwable thrown during operation
-     * @return boolean value if we got conflict during K8s operation or not
+     * @return {@code true} if the error is a 409 conflict and the operation should be retried,
+     *         {@code false} for any other error which should be propagated immediately
      */
-    private static boolean canRetry(Throwable t) {
-        return !(t instanceof KubernetesClientException kce) || kce.getCode() != 409;
+    private static boolean isConflictRetryable(Throwable t) {
+        return t instanceof KubernetesClientException kce && kce.getCode() == 409;
     }
 
     /**

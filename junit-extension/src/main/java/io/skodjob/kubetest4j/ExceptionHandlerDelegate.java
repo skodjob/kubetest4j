@@ -100,6 +100,15 @@ class ExceptionHandlerDelegate {
     /**
      * Centralized test failure handling logic.
      * Coordinates log collection and cleanup based on test configuration.
+     *
+     * <p>Cleanup is performed here as a safety net because some lifecycle phases
+     * have no subsequent cleanup opportunity:
+     * <ul>
+     *   <li>{@code afterEach} failure — no second afterEach runs</li>
+     *   <li>{@code afterAll} failure — no retry mechanism exists</li>
+     * </ul>
+     * For phases where afterEach/afterAll will also attempt cleanup (e.g. test execution,
+     * beforeEach), the second cleanup call is harmless — it finds an empty resource stack.
      */
     private void handleTestFailure(ExtensionContext context, String phase) {
         TestConfig testConfig = configurationService.getTestConfig(context);
