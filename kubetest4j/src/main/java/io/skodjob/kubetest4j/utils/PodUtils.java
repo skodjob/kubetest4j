@@ -54,9 +54,14 @@ public final class PodUtils {
                         return false;
                     } else {
                         if (containersReady) {
+                            if (pod.getStatus() == null
+                                || pod.getStatus().getContainerStatuses() == null) {
+                                LOGGER.debug("Pod {}/{} has no container statuses yet",
+                                    namespaceName, pod.getMetadata().getName());
+                                return false;
+                            }
                             for (ContainerStatus cs : pod.getStatus().getContainerStatuses()) {
-                                if (!(Boolean.TRUE.equals(cs.getReady())
-                                    || cs.getState().getTerminated().getReason().equals("Completed"))) {
+                                if (!isContainerReady(cs)) {
                                     LOGGER.debug("Container {} of Pod {}/{} is not ready",
                                         cs.getName(), namespaceName, pod.getMetadata().getName());
                                     return false;
@@ -104,9 +109,14 @@ public final class PodUtils {
                         return false;
                     } else {
                         if (containers) {
+                            if (pod.getStatus() == null
+                                || pod.getStatus().getContainerStatuses() == null) {
+                                LOGGER.debug("Pod {}/{} has no container statuses yet",
+                                    namespaceName, pod.getMetadata().getName());
+                                return false;
+                            }
                             for (ContainerStatus cs : pod.getStatus().getContainerStatuses()) {
-                                if (!(Boolean.TRUE.equals(cs.getReady())
-                                    || cs.getState().getTerminated().getReason().equals("Completed"))) {
+                                if (!isContainerReady(cs)) {
                                     LOGGER.debug("Container {} of Pod {}/{} not ready",
                                         cs.getName(), namespaceName, pod.getMetadata().getName());
                                     return false;
@@ -211,5 +221,25 @@ public final class PodUtils {
                 }
                 return false;
             });
+    }
+
+    /**
+     * Checks whether a container is considered ready.
+     * A container is ready if it reports {@code ready=true} or if it has terminated with reason "Completed".
+     * Handles null values safely for containers that haven't reported status yet.
+     *
+     * @param cs container status to check
+     * @return true if the container is ready or successfully completed
+     */
+    private static boolean isContainerReady(ContainerStatus cs) {
+        if (Boolean.TRUE.equals(cs.getReady())) {
+            return true;
+        }
+        if (cs.getState() != null
+            && cs.getState().getTerminated() != null
+            && "Completed".equals(cs.getState().getTerminated().getReason())) {
+            return true;
+        }
+        return false;
     }
 }

@@ -116,7 +116,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         this.exceptionHandler = new ExceptionHandlerDelegate(
             configurationService,
             logCollectionService::collectLogs,  // Log collection callback
-            this::handleAutomaticCleanup  // Cleanup callback
+            this::handleAutomaticCleanup  // Cleanup callback (safety net for afterEach/afterAll failures)
         );
     }
 

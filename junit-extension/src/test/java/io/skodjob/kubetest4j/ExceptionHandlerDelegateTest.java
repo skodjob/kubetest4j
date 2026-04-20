@@ -66,7 +66,8 @@ class ExceptionHandlerDelegateTest {
         void shouldHandleTestExecutionExceptionAndReThrow() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
@@ -74,7 +75,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleTestExecutionException(extensionContext, testException));
 
             // Verify log collection was triggered
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-test-execution-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-test-execution-testmethod"));
             verify(cleanupCallback).handleAutomaticCleanup(extensionContext, testConfig);
         }
 
@@ -83,7 +85,8 @@ class ExceptionHandlerDelegateTest {
         void shouldHandleBeforeAllMethodExecutionExceptionAndReThrow() {
             // Given
             RuntimeException testException = new RuntimeException("BeforeAll failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
@@ -91,7 +94,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleBeforeAllMethodExecutionException(extensionContext, testException));
 
             // Verify log collection was triggered with correct phase
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-before-all-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-before-all-testmethod"));
             verify(cleanupCallback).handleAutomaticCleanup(extensionContext, testConfig);
         }
 
@@ -100,7 +104,8 @@ class ExceptionHandlerDelegateTest {
         void shouldHandleBeforeEachMethodExecutionExceptionAndReThrow() {
             // Given
             RuntimeException testException = new RuntimeException("BeforeEach failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
@@ -108,7 +113,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleBeforeEachMethodExecutionException(extensionContext, testException));
 
             // Verify log collection was triggered with correct phase
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-before-each-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-before-each-testmethod"));
             verify(cleanupCallback).handleAutomaticCleanup(extensionContext, testConfig);
         }
 
@@ -117,7 +123,8 @@ class ExceptionHandlerDelegateTest {
         void shouldHandleAfterEachMethodExecutionExceptionAndReThrow() {
             // Given
             RuntimeException testException = new RuntimeException("AfterEach failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
@@ -125,7 +132,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleAfterEachMethodExecutionException(extensionContext, testException));
 
             // Verify log collection was triggered with correct phase
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-after-each-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-after-each-testmethod"));
             verify(cleanupCallback).handleAutomaticCleanup(extensionContext, testConfig);
         }
 
@@ -134,7 +142,8 @@ class ExceptionHandlerDelegateTest {
         void shouldHandleAfterAllMethodExecutionExceptionAndReThrow() {
             // Given
             RuntimeException testException = new RuntimeException("AfterAll failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.AUTOMATIC, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When/Then
@@ -142,7 +151,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleAfterAllMethodExecutionException(extensionContext, testException));
 
             // Verify log collection was triggered with correct phase
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-after-all-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-after-all-testmethod"));
             verify(cleanupCallback).handleAutomaticCleanup(extensionContext, testConfig);
         }
     }
@@ -156,7 +166,8 @@ class ExceptionHandlerDelegateTest {
         void shouldCollectLogsWhenStrategyIsOnFailure() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.MANUAL, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
@@ -164,7 +175,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleTestExecutionException(extensionContext, testException));
 
             // Then
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-test-execution-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-test-execution-testmethod"));
         }
 
         @Test
@@ -172,7 +184,8 @@ class ExceptionHandlerDelegateTest {
         void shouldCollectLogsWhenStrategyIsAfterEach() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.AFTER_EACH, CleanupStrategy.MANUAL, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.AFTER_EACH,
+                CleanupStrategy.MANUAL, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
@@ -180,7 +193,8 @@ class ExceptionHandlerDelegateTest {
                 delegate.handleTestExecutionException(extensionContext, testException));
 
             // Then
-            verify(logCollectionCallback).collectLogs(eq(extensionContext), eq("failure-test-execution-testmethod"));
+            verify(logCollectionCallback).collectLogs(eq(extensionContext),
+                eq("failure-test-execution-testmethod"));
         }
 
         @Test
@@ -246,7 +260,8 @@ class ExceptionHandlerDelegateTest {
         void shouldNotTriggerCleanupWhenStrategyIsManual() {
             // Given
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.MANUAL, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
@@ -284,7 +299,8 @@ class ExceptionHandlerDelegateTest {
             // Given
             when(extensionContext.getDisplayName()).thenReturn("SimpleTestName");
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.MANUAL, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When
@@ -302,7 +318,8 @@ class ExceptionHandlerDelegateTest {
             // Given
             when(extensionContext.getDisplayName()).thenReturn("Complex Test Name (With Params)");
             RuntimeException testException = new RuntimeException("Test failed");
-            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE, CleanupStrategy.MANUAL, true);
+            TestConfig testConfig = createTestConfig(LogCollectionStrategy.ON_FAILURE,
+                CleanupStrategy.MANUAL, true);
             when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
 
             // When

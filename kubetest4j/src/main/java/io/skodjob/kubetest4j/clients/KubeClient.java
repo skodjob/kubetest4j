@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
@@ -35,6 +37,23 @@ import org.slf4j.LoggerFactory;
  */
 public class KubeClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(KubeClient.class);
+
+    /**
+     * Tracks temp kubeconfig paths so each file is registered for cleanup exactly once.
+     */
+    private static final Set<Path> TEMP_KUBECONFIGS = ConcurrentHashMap.newKeySet();
+
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            for (Path p : TEMP_KUBECONFIGS) {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    // Best-effort cleanup during shutdown — nothing more we can do
+                }
+            }
+        }, "kubetest4j-temp-kubeconfig-cleanup"));
+    }
 
     private KubernetesClient client;
 
@@ -413,6 +432,10 @@ public class KubeClient {
             Exec.exec(null, Arrays.asList("kubectl", "config", "use-context",
                     "tf-context-" + suffix, "--kubeconfig", path),
                 0, false, true);
+
+            // Register for cleanup on JVM shutdown (idempotent — same path is stored once)
+            TEMP_KUBECONFIGS.add(Path.of(path));
+
             return path;
         } catch (Exception ex) {
             LOGGER.warn("Could not generate temp kubeconfig: {}", ex.getMessage());
