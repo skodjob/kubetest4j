@@ -49,7 +49,7 @@ public class KubeClient {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException e) {
-                    // Best-effort cleanup during shutdown — nothing more we can do
+                    LOGGER.debug("Failed to delete temp kubeconfig {}: {}", p, e.getMessage());
                 }
             }
         }, "kubetest4j-temp-kubeconfig-cleanup"));
@@ -417,6 +417,9 @@ public class KubeClient {
             String path = Path.of(KubeTestEnv.USER_PATH,
                 "test-" + host + "-" + suffix + ".kubeconfig").toString();
 
+            // Register up front so partially-created files are still cleaned on shutdown
+            TEMP_KUBECONFIGS.add(Path.of(path));
+
             Exec.exec(null, Arrays.asList("kubectl", "config", "set-credentials",
                     "tf-user-" + suffix, "--token", token, "--kubeconfig", path),
                 0, false, true);
@@ -432,9 +435,6 @@ public class KubeClient {
             Exec.exec(null, Arrays.asList("kubectl", "config", "use-context",
                     "tf-context-" + suffix, "--kubeconfig", path),
                 0, false, true);
-
-            // Register for cleanup on JVM shutdown (idempotent — same path is stored once)
-            TEMP_KUBECONFIGS.add(Path.of(path));
 
             return path;
         } catch (Exception ex) {
