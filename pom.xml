@@ -90,7 +90,7 @@
         <maven.surefire.version>3.5.5</maven.surefire.version>
         <jackson-dataformat-yaml.version>2.21.2</jackson-dataformat-yaml.version>
         <org.eclipse.sisu.version>1.0.0</org.eclipse.sisu.version>
-        <bouncycastle.version>1.83</bouncycastle.version>
+        <bouncycastle.version>1.84</bouncycastle.version>
 
         <it.skip>true</it.skip>
 
