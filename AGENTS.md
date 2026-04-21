@@ -27,6 +27,8 @@
 PRs are reviewed by **CodeRabbit** (AI reviewer) and quality-gated by **SonarCloud**:
 - **SonarCloud:** New code must have **>80% test coverage** (enforced). JaCoCo coverage is collected from `./mvnw verify -P integration` — both unit tests (`*Test.java`) and integration tests (`*IT.java`) count toward coverage.
 - **CI builds:** `./mvnw install` + `./mvnw spotbugs:spotbugs` on Java 21 and 25.
+- **CodeQL:** GitHub default setup for security vulnerability scanning (enabled in repo settings, no workflow file).
+- **Scorecard:** OpenSSF supply-chain security analysis (`scorecard.yml`).
 - **Verification:** SonarCloud scan runs on a separate workflow (`verify.yaml`).
 
 When writing new code, add unit tests to cover it. Integration tests running against a real Kind cluster provide additional coverage.
