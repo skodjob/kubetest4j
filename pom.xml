@@ -71,7 +71,7 @@
 
         <!--  TEST dependencies  -->
         <mockito.version>5.23.0</mockito.version>
-        <apache.commons.version>2.21.0</apache.commons.version>
+        <apache.commons.version>2.22.0</apache.commons.version>
 
         <!--   Build tools' properties     -->
         <spotbugs.version>4.9.8</spotbugs.version>
