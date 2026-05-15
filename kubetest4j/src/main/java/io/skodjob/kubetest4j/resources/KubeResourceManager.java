@@ -321,6 +321,24 @@ public final class KubeResourceManager {
     }
 
     /**
+     * Clears all singleton instances, forcing fresh instances on next access.
+     * This is needed to isolate mock tests from real client state left by
+     * integration-style tests sharing the same JVM.
+     */
+    /* test */ static void clearInstances() {
+        CONTEXT_INSTANCES.clear();
+    }
+
+    /**
+     * Returns the list of create callbacks for testing purposes.
+     *
+     * @return list of create callbacks
+     */
+    /* test */ static List<Consumer<HasMetadata>> getCreateCallbacks() {
+        return GLOBAL_CREATE_CALLBACKS;
+    }
+
+    /**
      * Sets the maximum number of concurrent async operations (create/delete) against the Kubernetes API.
      *
      * @param maxConcurrentOps maximum number of concurrent operations
@@ -603,7 +621,6 @@ public final class KubeResourceManager {
             } else {
                 promises.add(createOrUpdateResource(async, waitReady, allowUpdate, resource, type));
             }
-            GLOBAL_CREATE_CALLBACKS.forEach(cb -> cb.accept(resource));
         }
 
         try {
@@ -611,7 +628,7 @@ public final class KubeResourceManager {
         } catch (CompletionException e) {
             Throwable cause = e.getCause();
             LOGGER.error("Exception during wait for resources to be ready", cause);
-            throw new RuntimeException(cause.getMessage(), cause);
+            throw new IllegalStateException(cause.getMessage(), cause);
         }
     }
 
@@ -631,7 +648,8 @@ public final class KubeResourceManager {
             boolean async, boolean waitReady, boolean allowUpdate, T resource) {
 
         CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
-            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            Semaphore sem = OPERATION_SEMAPHORE.get();
+            sem.acquireUninterruptibly();
             try {
                 if (allowUpdate && kubeClient().getClient().resource(resource).get() != null) {
                     LoggerUtils.logResource("Updating", resource);
@@ -641,8 +659,9 @@ public final class KubeResourceManager {
                     kubeClient().getClient().resource(resource).create();
                 }
             } finally {
-                OPERATION_SEMAPHORE.get().release();
+                sem.release();
             }
+            invokeCreateCallbacksSafely(resource);
         }, EXECUTOR);
 
         if (!waitReady) {
@@ -650,7 +669,8 @@ public final class KubeResourceManager {
         }
 
         promise = promise.thenRunAsync(() -> {
-            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            Semaphore sem = OPERATION_SEMAPHORE.get();
+            sem.acquireUninterruptibly();
             try {
                 assertTrue(waitResourceCondition(resource,
                         new ResourceCondition<>(p -> {
@@ -662,7 +682,7 @@ public final class KubeResourceManager {
                     "Timed out waiting for " + resource.getKind() + "/" +
                         resource.getMetadata().getName());
             } finally {
-                OPERATION_SEMAPHORE.get().release();
+                sem.release();
             }
         }, EXECUTOR);
 
@@ -700,7 +720,8 @@ public final class KubeResourceManager {
             boolean async, boolean waitReady, boolean allowUpdate, T resource, ResourceType<T> type) {
 
         CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
-            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            Semaphore sem = OPERATION_SEMAPHORE.get();
+            sem.acquireUninterruptibly();
             try {
                 if (allowUpdate && kubeClient().getClient().resource(resource).get() != null) {
                     LoggerUtils.logResource("Updating", resource);
@@ -710,8 +731,9 @@ public final class KubeResourceManager {
                     type.create(resource);
                 }
             } finally {
-                OPERATION_SEMAPHORE.get().release();
+                sem.release();
             }
+            invokeCreateCallbacksSafely(resource);
         }, EXECUTOR);
 
         if (!waitReady) {
@@ -722,13 +744,14 @@ public final class KubeResourceManager {
             KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
 
         promise = promise.thenRunAsync(() -> {
-            OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+            Semaphore sem = OPERATION_SEMAPHORE.get();
+            sem.acquireUninterruptibly();
             try {
                 assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
                     "Timed out waiting for " + resource.getKind() + "/" +
                         resource.getMetadata().getName());
             } finally {
-                OPERATION_SEMAPHORE.get().release();
+                sem.release();
             }
         }, EXECUTOR);
 
@@ -809,14 +832,29 @@ public final class KubeResourceManager {
                     decideDeleteWaitAsync(waiters, async, resource);
                 }
 
-                GLOBAL_DELETE_CALLBACKS.forEach(cb -> cb.accept(resource));
+                for (Consumer<HasMetadata> cb : GLOBAL_DELETE_CALLBACKS) {
+                    try {
+                        cb.accept(resource);
+                    } catch (Exception cbEx) {
+                        LOGGER.warn("Delete callback failed for {}/{}: {}",
+                            resource.getKind(), resource.getMetadata().getName(),
+                            cbEx.getMessage(), cbEx);
+                    }
+                }
             } catch (Exception e) {
                 LOGGER.error("Deletion of {}/{} failed with the following error: {}",
                     resource.getKind(), resource.getMetadata().getName(), e.getMessage(), e);
             }
         }
 
-        handleAsyncDeletion(waiters);
+        List<Exception> errors = new ArrayList<>();
+        collectAsyncErrors(waiters, errors);
+        if (!errors.isEmpty()) {
+            RuntimeException composite = new RuntimeException(
+                "Failed to delete " + errors.size() + " resource(s)");
+            errors.forEach(composite::addSuppressed);
+            throw composite;
+        }
     }
 
     /**
@@ -878,11 +916,11 @@ public final class KubeResourceManager {
                 return;
             } catch (CompletionException ce) {
                 Throwable cause = ce.getCause();
-                if (!isConflictRetryable(cause) || ++attempt >= retries) {
+                if (isNotConflict(cause) || ++attempt >= retries) {
                     throw (cause instanceof RuntimeException re) ? re : new RuntimeException(cause);
                 }
             } catch (KubernetesClientException kce) {
-                if (!isConflictRetryable(kce) || ++attempt >= retries) {
+                if (isNotConflict(kce) || ++attempt >= retries) {
                     throw kce;
                 }
             }
@@ -890,15 +928,15 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Checks if the {@link Throwable} is a conflict (HTTP 409) from the Kubernetes API,
-     * meaning the operation can be retried on a fresh resource version.
+     * Checks if the {@link Throwable} is NOT a conflict (HTTP 409) from the Kubernetes API,
+     * meaning the error should be propagated immediately rather than retried.
      *
      * @param t throwable thrown during operation
-     * @return {@code true} if the error is a 409 conflict and the operation should be retried,
-     *         {@code false} for any other error which should be propagated immediately
+     * @return {@code true} if the error is not a 409 conflict and should be thrown,
+     *         {@code false} if it is a 409 conflict and the operation can be retried
      */
-    private static boolean isConflictRetryable(Throwable t) {
-        return t instanceof KubernetesClientException kce && kce.getCode() == 409;
+    private static boolean isNotConflict(Throwable t) {
+        return !(t instanceof KubernetesClientException kce && kce.getCode() == 409);
     }
 
     /**
@@ -990,11 +1028,12 @@ public final class KubeResourceManager {
 
     /**
      * Deletes all stored resources.
+     * The method continues deleting remaining resources even if individual deletions fail.
+     * After all resources are attempted, a composite exception is thrown if any deletions failed.
      *
      * @param async sets async or sequential deletion
      */
     public void deleteResources(boolean async) {
-        LoggerUtils.logSeparator();
         String ctxId = this.contextId;
         String testName = getTestContext().getDisplayName();
         Map<String, Stack<ResourceItem<?>>> byTest = STORED_RESOURCES.get(ctxId);
@@ -1002,73 +1041,146 @@ public final class KubeResourceManager {
             LOGGER.info("No resources to delete for [{}]/{}", ctxId, testName);
             return;
         }
+        LoggerUtils.logSeparator();
         LOGGER.info("Deleting all resources for [{}]/{}", ctxId, testName);
         Stack<ResourceItem<?>> stack = byTest.get(testName);
-        AtomicInteger count = new AtomicInteger(stack.size());
         List<CompletableFuture<Void>> waiters = new ArrayList<>();
-        while (!stack.isEmpty()) {
-            ResourceItem<?> item = stack.pop();
-            CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                OPERATION_SEMAPHORE.get().acquireUninterruptibly();
-                try {
-                    item.throwableRunner().run();
-                } catch (Exception e) {
-                    throw new RuntimeException(e.getMessage(), e);
-                } finally {
-                    OPERATION_SEMAPHORE.get().release();
-                }
-            }, EXECUTOR);
-            if (async) {
-                waiters.add(cf);
-            } else {
-                try {
-                    cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
-                } catch (TimeoutException e) {
-                    LOGGER.error("Timeout waiting for deletion of resource {}/{}",
-                        item.resource().getMetadata().getNamespace(),
-                        item.resource().getMetadata().getName(),
-                        e
-                    );
-                    throw new RuntimeException(e.getMessage(), e);
-                } catch (InterruptedException | ExecutionException e) {
-                    LOGGER.error("Exception during deletion or wait for resource {}/{} to be deleted",
-                        item.resource().getMetadata().getNamespace(),
-                        item.resource().getMetadata().getName(),
-                        e
-                    );
-                    throw new RuntimeException(e.getMessage(), e);
+        List<Exception> errors = new ArrayList<>();
+        try {
+            while (!stack.isEmpty()) {
+                ResourceItem<?> item = stack.pop();
+                CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
+                    Semaphore sem = OPERATION_SEMAPHORE.get();
+                    sem.acquireUninterruptibly();
+                    try {
+                        item.throwableRunner().run();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    } finally {
+                        sem.release();
+                    }
+                }, EXECUTOR);
+                if (async) {
+                    waiters.add(cf);
+                } else {
+                    try {
+                        cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
+                    } catch (TimeoutException e) {
+                        LOGGER.error("Timeout waiting for deletion of resource {}",
+                            resourceDescription(item), e);
+                        errors.add(e);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        LOGGER.error("Interrupted during deletion of resource {}",
+                            resourceDescription(item), e);
+                        errors.add(e);
+                    } catch (ExecutionException e) {
+                        LOGGER.error("Exception during deletion of resource {}",
+                            resourceDescription(item), e);
+                        errors.add(e);
+                    }
                 }
             }
-            count.decrementAndGet();
-            GLOBAL_DELETE_CALLBACKS.forEach(cb -> Optional.ofNullable(item.resource()).ifPresent(cb));
+            collectAsyncErrors(waiters, errors);
+        } finally {
+            byTest.remove(testName);
+            if (byTest.isEmpty()) {
+                STORED_RESOURCES.remove(ctxId);
+            }
+            LoggerUtils.logSeparator();
         }
-        handleAsyncDeletion(waiters);
-
-        byTest.remove(testName);
-        if (byTest.isEmpty()) {
-            STORED_RESOURCES.remove(ctxId);
+        if (!errors.isEmpty()) {
+            RuntimeException composite = new RuntimeException(
+                "Failed to delete " + errors.size() + " resource(s)");
+            errors.forEach(composite::addSuppressed);
+            throw composite;
         }
-        LoggerUtils.logSeparator();
     }
 
     /**
-     * Method handling the async deletion, if the `waiters` parameter is not empty.
+     * Collects errors from async deletion futures without throwing.
      *
-     * @param waiters List of {@link CompletableFuture} that should be run async.
+     * @param waiters List of {@link CompletableFuture} from async deletions.
+     * @param errors  List to collect any exceptions into.
      */
-    /* test */ void handleAsyncDeletion(List<CompletableFuture<Void>> waiters) {
-        if (!waiters.isEmpty()) {
-            try {
-                CompletableFuture.allOf(waiters.toArray(new CompletableFuture[0]))
-                    .get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException e) {
-                LOGGER.error("Timeout exception during wait for resources to be deleted");
-                throw new RuntimeException(e.getMessage(), e);
-            } catch (InterruptedException | ExecutionException e) {
-                LOGGER.error("Exception during wait for resources to be deleted", e);
-                throw new RuntimeException(e.getMessage(), e);
+    /* test */ void collectAsyncErrors(List<CompletableFuture<Void>> waiters,
+                                       List<Exception> errors) {
+        if (waiters.isEmpty()) {
+            return;
+        }
+        try {
+            CompletableFuture.allOf(waiters.toArray(new CompletableFuture[0]))
+                .get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            collectIndividualFutureErrors(waiters, errors);
+            if (errors.isEmpty()) {
+                errors.add(e);
+            }
+        } catch (TimeoutException | ExecutionException e) {
+            collectIndividualFutureErrors(waiters, errors);
+            if (errors.isEmpty()) {
+                errors.add(e);
             }
         }
+    }
+
+    /**
+     * Iterates individual futures and collects exceptions from any that completed exceptionally.
+     *
+     * @param waiters List of completed or timed-out futures.
+     * @param errors  List to collect exceptions into.
+     */
+    private void collectIndividualFutureErrors(List<CompletableFuture<Void>> waiters,
+                                               List<Exception> errors) {
+        for (CompletableFuture<Void> future : waiters) {
+            if (future.isCompletedExceptionally()) {
+                try {
+                    future.getNow(null);
+                } catch (Exception individual) {
+                    errors.add(individual);
+                }
+            }
+        }
+    }
+
+    /**
+     * Invokes create callbacks for the given resource, catching any exceptions to prevent
+     * a failing callback from aborting creation of remaining resources.
+     *
+     * @param resource The resource whose create callbacks should be invoked.
+     * @param <T>      The type of the resource.
+     */
+    /* test */ <T extends HasMetadata> void invokeCreateCallbacksSafely(T resource) {
+        for (Consumer<HasMetadata> cb : GLOBAL_CREATE_CALLBACKS) {
+            try {
+                cb.accept(resource);
+            } catch (Exception e) {
+                LOGGER.warn("Create callback failed for {}/{}: {}",
+                    resource.getKind(), resource.getMetadata().getName(),
+                    e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Returns a null-safe description of a resource item for logging.
+     *
+     * @param item The resource item to describe.
+     * @return A string like "namespace/name" or "&lt;unknown resource&gt;".
+     */
+    /* test */ static String resourceDescription(ResourceItem<?> item) {
+        if (item.resource() == null || item.resource().getMetadata() == null) {
+            return "<unknown resource>";
+        }
+        String kind = item.resource().getKind();
+        String ns = item.resource().getMetadata().getNamespace();
+        String name = item.resource().getMetadata().getName();
+        String prefix = kind != null ? kind + " " : "";
+        if (ns != null) {
+            return prefix + ns + "/" + name;
+        }
+        return prefix + name;
     }
 
     /**
@@ -1129,12 +1241,13 @@ public final class KubeResourceManager {
         CompletableFuture<Void> cf;
         if (async) {
             cf = CompletableFuture.runAsync(() -> {
-                OPERATION_SEMAPHORE.get().acquireUninterruptibly();
+                Semaphore sem = OPERATION_SEMAPHORE.get();
+                sem.acquireUninterruptibly();
                 try {
                     assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
                         "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName());
                 } finally {
-                    OPERATION_SEMAPHORE.get().release();
+                    sem.release();
                 }
             }, EXECUTOR);
         } else {
@@ -1153,14 +1266,17 @@ public final class KubeResourceManager {
                     res.getMetadata().getName(),
                     e
                 );
-                throw new RuntimeException(e.getMessage(), e);
-            } catch (InterruptedException | ExecutionException e) {
+                throw new IllegalStateException(e.getMessage(), e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e.getMessage(), e);
+            } catch (ExecutionException e) {
                 LOGGER.error("Exception during wait for resource {}/{} to be deleted",
                     res.getMetadata().getNamespace(),
                     res.getMetadata().getName(),
                     e
                 );
-                throw new RuntimeException(e.getMessage(), e);
+                throw new IllegalStateException(e.getMessage(), e);
             }
         }
     }

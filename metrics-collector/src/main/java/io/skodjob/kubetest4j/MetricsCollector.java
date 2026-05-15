@@ -583,7 +583,12 @@ public class MetricsCollector {
 
         for (final Pod p : pods) {
             final String podName = p.getMetadata().getName();
-            String podIP = p.getStatus().getPodIP();
+            String podIP = p.getStatus() != null ? p.getStatus().getPodIP() : null;
+            if (podIP == null) {
+                LOGGER.warn("Pod {} has no IP address assigned, skipping metrics collection",
+                    podName);
+                continue;
+            }
             if (KubeTestEnv.IP_FAMILY.equals(KubeTestEnv.IP_FAMILY_VERSION_6)) {
                 podIP = "[" + podIP + "]";
             }

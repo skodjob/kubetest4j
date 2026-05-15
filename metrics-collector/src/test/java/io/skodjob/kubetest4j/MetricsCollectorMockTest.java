@@ -281,7 +281,7 @@ final class MetricsCollectorMockTest {
     }
 
     @Test
-    void testCollectMetricsHandlesMissingPodIp() throws Exception {
+    void testCollectMetricsSkipsPodWithMissingIp() {
         var kubeClient = mock(io.fabric8.kubernetes.client.KubernetesClient.class);
         var podsOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
         var nsOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
@@ -300,8 +300,6 @@ final class MetricsCollectorMockTest {
         when(nsOp.list()).thenReturn(podList);
 
         var exec = mock(io.skodjob.kubetest4j.executor.Exec.class);
-        when(exec.execute(any(), any(), any(), anyLong())).thenReturn(0);
-        when(exec.out()).thenReturn("metric_no_ip 1.0");
 
         MetricsCollector collector = new MetricsCollector.Builder()
             .withNamespaceName("ns")
@@ -313,9 +311,56 @@ final class MetricsCollectorMockTest {
         collector.setExec(exec);
         collector.setKubeCmdClient(mock(io.skodjob.kubetest4j.clients.cmdClient.KubeCmdClient.class));
 
-        assertThrows(MetricsCollectionException.class,
+        assertThrows(NoPodsFoundException.class,
             () -> collector.collectMetricsFromPods(1000),
-            "Expected error due to missing pod IP");
+            "Pod with null IP should be skipped, resulting in no data");
+    }
+
+    @Test
+    void testCollectMetricsSkipsNullIpButCollectsValidPod() throws Exception {
+        var kubeClient = mock(io.fabric8.kubernetes.client.KubernetesClient.class);
+        var podsOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
+        var nsOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
+
+        var nullIpPod = new io.fabric8.kubernetes.api.model.PodBuilder()
+            .withNewMetadata().withName("pod-no-ip").endMetadata()
+            .withNewStatus().withPodIP(null).endStatus()
+            .build();
+        var validPod = new io.fabric8.kubernetes.api.model.PodBuilder()
+            .withNewMetadata().withName("pod-ok").withNamespace("ns").endMetadata()
+            .withNewStatus().withPodIP("10.0.0.1").endStatus()
+            .build();
+
+        var podList = new io.fabric8.kubernetes.api.model.PodList();
+        podList.setItems(List.of(nullIpPod, validPod));
+
+        when(kubeClient.pods()).thenReturn(podsOp);
+        when(podsOp.inNamespace(anyString())).thenReturn(nsOp);
+        when(nsOp.withLabelSelector((LabelSelector) any())).thenReturn(nsOp);
+        when(nsOp.list()).thenReturn(podList);
+
+        var exec = mock(io.skodjob.kubetest4j.executor.Exec.class);
+        when(exec.execute(any(), any(), any(), anyLong())).thenReturn(0);
+        when(exec.out()).thenReturn("metric_ok 42");
+
+        MetricsCollector collector = new MetricsCollector.Builder()
+            .withNamespaceName("ns")
+            .withScraperPodName("pod")
+            .withComponent(new MetricsCollectorTest.DummyMetricsComponent())
+            .build();
+
+        var cmdClient = mock(io.skodjob.kubetest4j.clients.cmdClient.KubeCmdClient.class);
+        when(cmdClient.inNamespace(anyString())).thenReturn(new Kubectl());
+
+        collector.setKubeClient(kubeClient);
+        collector.setExec(exec);
+        collector.setKubeCmdClient(cmdClient);
+
+        collector.collectMetricsFromPods(3000);
+        assertTrue(collector.getCollectedData().containsKey("pod-ok"),
+            "Valid pod should have metrics collected");
+        assertFalse(collector.getCollectedData().containsKey("pod-no-ip"),
+            "Null-IP pod should be skipped");
     }
 
     @Test
