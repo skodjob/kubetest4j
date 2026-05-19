@@ -1063,20 +1063,26 @@ public final class KubeResourceManager {
                 if (async) {
                     waiters.add(cf);
                 } else {
+                    String resNs = item.resource() != null
+                        && item.resource().getMetadata() != null
+                        ? item.resource().getMetadata().getNamespace() : null;
+                    String resName = item.resource() != null
+                        && item.resource().getMetadata() != null
+                        ? item.resource().getMetadata().getName() : null;
                     try {
                         cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
                     } catch (TimeoutException e) {
-                        LOGGER.error("Timeout waiting for deletion of resource {}",
-                            resourceDescription(item), e);
+                        LOGGER.error("Timeout waiting for deletion of resource {}/{}",
+                            resNs, resName, e);
                         errors.add(e);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        LOGGER.error("Interrupted during deletion of resource {}",
-                            resourceDescription(item), e);
+                        LOGGER.error("Interrupted during deletion of resource {}/{}",
+                            resNs, resName, e);
                         errors.add(e);
                     } catch (ExecutionException e) {
-                        LOGGER.error("Exception during deletion of resource {}",
-                            resourceDescription(item), e);
+                        LOGGER.error("Exception during deletion of resource {}/{}",
+                            resNs, resName, e);
                         errors.add(e);
                     }
                 }
