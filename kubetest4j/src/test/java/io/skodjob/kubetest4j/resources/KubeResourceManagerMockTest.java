@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -346,7 +347,10 @@ public class KubeResourceManagerMockTest {
         Namespace ns = new NamespaceBuilder().withNewMetadata()
             .withName("int-ns").endMetadata().build();
 
-        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, ns));
+        CountDownLatch blockRunner = new CountDownLatch(1);
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
+            blockRunner.await();
+        }, ns));
 
         try {
             Thread.currentThread().interrupt();
@@ -356,6 +360,7 @@ public class KubeResourceManagerMockTest {
             assertEquals(1, ex.getSuppressed().length,
                 "Should have one suppressed exception");
         } finally {
+            blockRunner.countDown();
             Thread.interrupted();
         }
     }
