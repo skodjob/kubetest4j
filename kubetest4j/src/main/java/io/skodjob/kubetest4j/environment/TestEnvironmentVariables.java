@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.function.Function;
 
 /**
@@ -33,6 +34,7 @@ public class TestEnvironmentVariables {
     private static final Logger LOGGER = LoggerFactory.getLogger(TestEnvironmentVariables.class);
 
     /* test */ private final Map<String, String> envMap;
+    /* test */ private final Map<String, String> systemProperties;
     private final Map<String, String> values = new HashMap<>();
     private Map<String, Object> yamlData = new HashMap<>();
     private final String configFilePath;
@@ -40,10 +42,10 @@ public class TestEnvironmentVariables {
 
     /**
      * {@link TestEnvironmentVariables} object initialization, where the config file is loaded to {@link #yamlData}
-     * if possible.
+     * if possible. Reads both environment variables and JVM system properties ({@code -D} flags).
      */
     public TestEnvironmentVariables() {
-        this(System.getenv());
+        this(System.getenv(), toStringMap(System.getProperties()));
     }
 
     /**
@@ -53,41 +55,71 @@ public class TestEnvironmentVariables {
      * @param envMap Map containing the environment variables. Used mainly for testing purposes.
      */
     public TestEnvironmentVariables(Map<String, String> envMap) {
+        this(envMap, Collections.emptyMap());
+    }
+
+    /**
+     * {@link TestEnvironmentVariables} object initialization, where the config file is loaded to {@link #yamlData}
+     * if possible.
+     *
+     * @param envMap           Map containing the environment variables. Used mainly for testing purposes.
+     * @param systemProperties Map containing the JVM system properties. Used mainly for testing purposes.
+     */
+    public TestEnvironmentVariables(Map<String, String> envMap, Map<String, String> systemProperties) {
         this.envMap = envMap;
-        this.configFilePath = envMap.getOrDefault(CONFIG_FILE_PATH_ENV,
+        this.systemProperties = systemProperties;
+        this.configFilePath = resolveValue(CONFIG_FILE_PATH_ENV, envMap, systemProperties,
             Paths.get(System.getProperty("user.dir"), "config.yaml").toAbsolutePath().toString());
         this.yamlData = loadConfigurationFile();
     }
 
+    private static String resolveValue(String key, Map<String, String> envMap,
+                                       Map<String, String> sysProps, String defaultValue) {
+        String value = envMap.get(key);
+        if (value == null) {
+            value = sysProps.get(key);
+        }
+        return value != null ? value : defaultValue;
+    }
+
+    private static Map<String, String> toStringMap(Properties properties) {
+        Map<String, String> map = new HashMap<>();
+        for (String name : properties.stringPropertyNames()) {
+            map.put(name, properties.getProperty(name));
+        }
+        return map;
+    }
+
     /**
-     * Method which returns the value from env variable or its default in String.
+     * Method which returns the value from env variable, system property, or its default in String.
+     * Resolution order: env variable &gt; system property (-D) &gt; config file &gt; default.
      *
-     * @param envVarName   environment variable name
-     * @param defaultValue default value, which should be used if the env var is empty and the config file
-     *                     doesn't contain it
-     * @return value from env var/config file or default
+     * @param envVarName   environment variable name (also used as the system property key)
+     * @param defaultValue default value, which should be used if no source contains the value
+     * @return resolved value or default
      */
     public String getOrDefault(String envVarName, String defaultValue) {
         return getOrDefault(envVarName, String::toString, defaultValue);
     }
 
     /**
-     * Method which returns the value from env variable or its default in the specified type.
-     * It also checks if the env var is specified in the configuration file before applying the default.
+     * Method which returns the value from env variable, system property, or its default in the specified type.
+     * Resolution order: env variable &gt; system property (-D) &gt; config file &gt; default.
      *
-     * @param envVarName   environment variable name
+     * @param envVarName   environment variable name (also used as the system property key)
      * @param converter    converter to the desired type
-     * @param defaultValue default value, which should be used if the env var is empty and the config file
-     *                     doesn't contain it
+     * @param defaultValue default value, which should be used if no source contains the value
      * @param <T>          desired type
-     * @return value from env var/config file or default
+     * @return resolved value or default
      */
     public <T> T getOrDefault(String envVarName, Function<String, T> converter, T defaultValue) {
-        String value = envMap.get(envVarName) != null ?
-            envMap.get(envVarName) :
-            (Objects.requireNonNull(yamlData).get(envVarName) != null ?
-                yamlData.get(envVarName).toString() :
-                null);
+        String value = envMap.get(envVarName);
+        if (value == null) {
+            value = systemProperties.get(envVarName);
+        }
+        if (value == null && Objects.requireNonNull(yamlData).get(envVarName) != null) {
+            value = yamlData.get(envVarName).toString();
+        }
 
         T returnValue = defaultValue;
 
@@ -143,7 +175,7 @@ public class TestEnvironmentVariables {
 
         LoggerUtils.logSeparator("-", 30);
 
-        LOGGER.info("Used environment variables:");
+        LOGGER.info("Used configuration values (env vars, system properties, config file):");
 
         values.entrySet().stream()
             .sorted(Map.Entry.comparingByKey())
@@ -192,6 +224,7 @@ public class TestEnvironmentVariables {
 
         /* ---------- suffixed contexts ---------- */
         var keySource = new HashSet<>(envMap.keySet());
+        keySource.addAll(systemProperties.keySet());
         if (yamlData != null) keySource.addAll(yamlData.keySet());
 
         keySource.stream()

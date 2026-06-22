@@ -141,16 +141,21 @@ class MultiContextTest {
 }
 ```
 
-Configure additional contexts via environment variables:
+Configure additional contexts via environment variables or JVM system properties (`-D`).
+Values are resolved in order: **env variable > system property (`-D`) > YAML config file > default**.
+
 ```bash
-# Default context
-KUBE_URL=https://api.default:6443
-KUBE_TOKEN=default-token
+# As environment variables
+export KUBE_URL=https://api.default:6443
+export KUBE_TOKEN=default-token
+
+# Or as Maven system properties
+./mvnw test -DKUBE_URL=https://api.default:6443 -DKUBE_TOKEN=default-token
 
 # Additional contexts (use any suffix)
-KUBE_URL_PROD=https://api.prod:6443
-KUBE_TOKEN_PROD=prod-token
-KUBECONFIG_STAGE=/path/to/stage.kubeconfig
+export KUBE_URL_PROD=https://api.prod:6443
+export KUBE_TOKEN_PROD=prod-token
+export KUBECONFIG_STAGE=/path/to/stage.kubeconfig
 ```
 
 ## ResourceType Registration

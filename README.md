@@ -52,10 +52,25 @@ All modules are published to Maven Central under `io.skodjob.kubetest4j`.
 | [Examples (core)](test-examples/src/test/java/io/skodjob/kubetest4j/test/integration) | Integration test examples using `@ResourceManager` |
 | [Examples (JUnit ext)](junit-extension/src/test/java/io/skodjob/kubetest4j/examples/) | Integration test examples using `@KubernetesTest` |
 
-## Config environment variables
+## Configuration
+
+Configuration values are resolved in the following order (first match wins):
+
+1. **Environment variable** (`export KUBE_URL=...`)
+2. **JVM system property** (`-DKUBE_URL=...` via Maven or JVM args)
+3. **YAML config file** (`config.yaml` in project root, or path set by `ENV_FILE`)
+4. **Default value**
+
+This means you can pass configuration directly via Maven:
+```bash
+./mvnw test -DKUBE_URL=https://api.my-cluster:6443 -DKUBE_TOKEN=my-token -DCLIENT_TYPE=oc
+```
+
+### Config variables
+
 | Variable | Description |
 |----------|-------------|
-| `ENV_FILE` | Path to YAML file with environment variable values |
+| `ENV_FILE` | Path to YAML file with configuration values |
 | `KUBE_URL` | URL of the cluster (API URL) |
 | `KUBE_TOKEN` | Token for cluster access |
 | `KUBECONFIG` | Path to kubeconfig (overrides URL/token) |
