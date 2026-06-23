@@ -4,16 +4,7 @@
  */
 package io.skodjob.kubetest4j.resources;
 
-import io.fabric8.kubernetes.api.model.Endpoints;
 import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.Node;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.ReplicationController;
-import io.fabric8.kubernetes.api.model.apps.Deployment;
-import io.fabric8.kubernetes.api.model.apps.ReplicaSet;
-import io.fabric8.kubernetes.api.model.apps.StatefulSet;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.utils.Serialization;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.KubeTestEnv;
 import io.skodjob.kubetest4j.clients.KubeClient;
@@ -22,45 +13,29 @@ import io.skodjob.kubetest4j.clients.cmdClient.Kubectl;
 import io.skodjob.kubetest4j.clients.cmdClient.Oc;
 import io.skodjob.kubetest4j.environment.TestEnvironmentVariables;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
-import io.skodjob.kubetest4j.utils.LoggerUtils;
 import io.skodjob.kubetest4j.wait.Wait;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Deque;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <h2>KubeResourceManager</h2>
@@ -74,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   KUBECONFIG   = /path/to/default.kubeconfig   # overrides URL/TOKEN
  *
  *   # extra contexts
- *   KUBECONFIG_PROD = /path/to/prod.kubeconfig  # the highest precedence per context
+ *   KUBECONFIG_PROD = /path/to/prod.kubeconfig
  *   KUBE_URL_STAGE  = https://api.stage:6443
  *   KUBE_TOKEN_STAGE= token
  *   KUBE_URL_QA     = https://api.qa:6443
@@ -85,19 +60,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The default context has no suffix.
  *
  * <h3>Multi-context usage</h3>
- *
  * <pre>
- * // Default context (backward compatible)
  * KubeResourceManager defaultMgr = KubeResourceManager.get();
- *
- * // Specific context instances
  * KubeResourceManager prodMgr = KubeResourceManager.getForContext("prod");
- * KubeResourceManager stageMgr = KubeResourceManager.getForContext("stage");
- *
- * // Both can be used simultaneously
  * defaultMgr.createResourceWithWait(myDeployment);
  * prodMgr.createResourceWithWait(prodDeployment);
  * </pre>
+ *
+ * <p>Implementation is split across package-private helpers:
+ * <ul>
+ *   <li>{@link ResourceTrackerService} — batch/stack tracking</li>
+ *   <li>{@link ResourceCreateService} — create/update execution</li>
+ *   <li>{@link ResourceDeleteService} — delete/replace/cleanup</li>
+ * </ul>
  */
 public final class KubeResourceManager {
 
@@ -124,80 +99,71 @@ public final class KubeResourceManager {
     private static final ThreadLocal<String> CURRENT_CLUSTER_CONTEXT = ThreadLocal.withInitial(() ->
         KubeTestConstants.DEFAULT_CONTEXT_NAME);
     private static final ThreadLocal<ExtensionContext> TEST_CONTEXT = new ThreadLocal<>();
-    private static final Map<String, Map<String, Deque<ResourceBatch>>> STORED_RESOURCES =
-        new ConcurrentHashMap<>();
-    private static final ThreadLocal<Map<String, List<ResourceItem<?>>>> CURRENT_BATCH =
-        new ThreadLocal<>();
 
-    // Lock used during store of resources that are being created by KubeResourceManager
     private static final Object CREATION_LOCK = new Object();
 
-    // Configured maximum number of concurrent async operations.
     private static final AtomicInteger MAX_CONCURRENT_OPERATIONS =
         new AtomicInteger(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS);
-
-    // Semaphore controlling the maximum number of concurrent async operations (create/delete)
     private static final AtomicReference<Semaphore> OPERATION_SEMAPHORE =
         new AtomicReference<>(new Semaphore(KubeTestConstants.DEFAULT_MAX_CONCURRENT_OPERATIONS));
 
-    /**
-     * Stores connected kube clients for context
-     *
-     * @param kubeClient kube client
-     * @param cmdClient  cmd client
-     */
     private record ClusterContext<K extends KubeCmdClient<K>>(KubeClient kubeClient, K cmdClient) {
     }
+
+    private static final Executor EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+
+    // Extracted helpers (per-instance, created lazily to allow spy wiring)
+    private ResourceTrackerService tracker;
+    private ResourceCreateService createService;
+    private ResourceDeleteService deleteService;
 
     private KubeResourceManager(String contextId) {
         this.contextId = contextId;
     }
 
-    /**
-     * Virtual Thread executor concurrency in Kubernetes resource operations.
-     */
-    private static final Executor EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    /* ─────────────────  SINGLETON MANAGEMENT  ──────────────── */
 
     /**
      * Gets KubeResourceManager instance for the default context.
-     * This method preserves backward compatibility.
      *
-     * @return singleton instance for default context
+     * @return default context KubeResourceManager
      */
     public static KubeResourceManager get() {
         return getForContext(KubeTestConstants.DEFAULT_CONTEXT_NAME);
     }
 
     /**
-     * Gets KubeResourceManager instance for a specific Kubernetes context.
-     * Each context has its own singleton instance with separate client connections,
-     * but shared configuration (callbacks, resource types, etc.).
+     * Gets or creates a KubeResourceManager for the given context id.
      *
-     * @param contextId the Kubernetes context identifier
-     * @return singleton instance for the specified context
+     * @param contextId the cluster context identifier
+     * @return KubeResourceManager for the context
      */
     public static KubeResourceManager getForContext(String contextId) {
         String normalizedContextId = Optional.ofNullable(contextId)
             .orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME)
             .toLowerCase();
-
         return CONTEXT_INSTANCES.computeIfAbsent(normalizedContextId,
             KubeResourceManager::new);
     }
 
     /**
-     * Set the active context for this thread and auto‑restore on close.
-     * This method is maintained for backward compatibility with existing thread-local context switching.
+     * Switches cluster context for the current thread.
      *
-     * @param id name of cluster context
-     * @return context
+     * @param id the context id to switch to
+     * @return AutoCloseable that restores the previous context
      */
     public AutoCloseable useContext(String id) {
-        String ctxId = Optional.ofNullable(id).orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME).toLowerCase();
+        String ctxId = Optional.ofNullable(id)
+            .orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME)
+            .toLowerCase();
+
         if (!CLUSTER_CONFIGS.containsKey(ctxId)) {
-            throw new IllegalArgumentException("Unknown context '" + ctxId +
-                "'. Define env vars [KUBE_URL|KUBE_TOKEN|KUBECONFIG]_" + ctxId.toUpperCase());
+            throw new IllegalArgumentException(
+                "Unknown context '" + ctxId
+                    + "'. Define env vars [KUBE_URL|KUBE_TOKEN|KUBECONFIG]_"
+                    + ctxId.toUpperCase());
         }
+
         LOGGER.info("Switching to context {}", ctxId);
         String prev = CURRENT_CLUSTER_CONTEXT.get();
         CURRENT_CLUSTER_CONTEXT.set(ctxId);
@@ -207,23 +173,17 @@ public final class KubeResourceManager {
         };
     }
 
-    /**
-     * Creates context for cluster id and connect clients
-     *
-     * @param id id of cluster
-     * @return context
-     */
-    private ClusterContext<? extends KubeCmdClient<?>> clusterContext(String id) {
-        return clientCache.computeIfAbsent(id, cid -> {
+    /* ─────────────────  CLIENT ACCESSORS  ──────────────────── */
+
+    @SuppressWarnings("unchecked")
+    private <K extends KubeCmdClient<K>> ClusterContext<K> clusterContext(String id) {
+        return (ClusterContext<K>) clientCache.computeIfAbsent(id, cid -> {
             TestEnvironmentVariables.ClusterConfig c = CLUSTER_CONFIGS.get(cid);
-            if (c == null) {
-                throw new IllegalStateException("Credentials missing for context " + cid);
-            }
 
             KubeClient kube;
-            if (c.kubeconfigPath() != null) {
+            if (c != null && c.kubeconfigPath() != null) {
                 kube = new KubeClient(c.kubeconfigPath());
-            } else if (c.url() != null && c.token() != null) {
+            } else if (c != null && c.url() != null && c.token() != null) {
                 kube = KubeClient.fromUrlAndToken(c.url(), c.token());
             } else {
                 kube = new KubeClient();
@@ -239,19 +199,12 @@ public final class KubeResourceManager {
         });
     }
 
-    /**
-     * Gets current context for this instance
-     *
-     * @return context
-     */
     private ClusterContext<? extends KubeCmdClient<?>> clusterContext() {
         return clusterContext(this.contextId);
     }
 
-    /* ───────────────  kube clients accessors  ─────────────── */
-
     /**
-     * Returns kube client for current context
+     * Returns kube client for current context.
      *
      * @return kube client
      */
@@ -260,7 +213,7 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Returns kube cmd client for current context
+     * Returns kube cmd client for current context.
      *
      * @param <K> Type extending {@link KubeCmdClient}
      * @return kube cmd client
@@ -270,64 +223,70 @@ public final class KubeResourceManager {
         return (K) clusterContext().cmdClient;
     }
 
+    /* ─────────────────  CONFIGURATION  ─────────────────────── */
+
     /**
-     * Set path for storing yaml resources (applies to all contexts)
+     * Sets the path for storing YAML representations of created resources.
      *
-     * @param path root path for storing
+     * @param path The directory path, or null to disable YAML storage.
      */
     public void setStoreYamlPath(String path) {
         globalStoreYamlPath = path;
+        if (path != null) {
+            LOGGER.info("Resource YAML storage enabled at: {}", path);
+        } else {
+            LOGGER.info("Resource YAML storage disabled");
+        }
     }
 
     /**
-     * Returns root path of stored yaml resources
+     * Returns the current YAML storage path.
      *
-     * @return path
+     * @return yaml storage path or null
      */
     public String getStoreYamlPath() {
         return globalStoreYamlPath;
     }
 
     /**
-     * Returns the currently registered resource types.
+     * Returns the currently configured resource types.
      *
-     * @return array of registered resource types (may be empty, never null)
+     * @return array of resource types
      */
     public ResourceType<?>[] getResourceTypes() {
         return GLOBAL_RESOURCE_TYPES.get();
     }
 
     /**
-     * Add resource types for special handling by resource manager (applies to all contexts)
+     * Sets resource types used for typed creation, deletion and readiness checks.
      *
-     * @param types resource types implementation
+     * @param types resource type implementations
      */
     public void setResourceTypes(ResourceType<?>... types) {
         GLOBAL_RESOURCE_TYPES.set(types);
     }
 
     /**
-     * Adds callback which is called after every created resource (applies to all contexts)
+     * Registers a callback invoked after each resource creation.
      *
-     * @param cb callback
+     * @param cb the callback
      */
     public void addCreateCallback(Consumer<HasMetadata> cb) {
         GLOBAL_CREATE_CALLBACKS.add(cb);
     }
 
     /**
-     * Adds delete callback which is called after every deletion of resource (applies to all contexts)
+     * Registers a callback invoked after each resource deletion.
      *
-     * @param cb callback
+     * @param cb the callback
      */
     public void addDeleteCallback(Consumer<HasMetadata> cb) {
         GLOBAL_DELETE_CALLBACKS.add(cb);
     }
 
     /**
-     * Clears all singleton instances, forcing fresh instances on next access.
-     * This is needed to isolate mock tests from real client state left by
-     * integration-style tests sharing the same JVM.
+     * Clears all singleton instances.
+     * This is needed to isolate mock tests from real client state.
      */
     /* test */ static void clearInstances() {
         CONTEXT_INSTANCES.clear();
@@ -343,60 +302,115 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Sets the maximum number of concurrent async operations (create/delete) against the Kubernetes API.
+     * Sets the maximum number of concurrent async operations.
      *
      * @param maxConcurrentOps maximum number of concurrent operations
      */
     public void setMaxConcurrentOperations(int maxConcurrentOps) {
         if (maxConcurrentOps <= 0) {
             throw new IllegalArgumentException(
-                "maxConcurrentOperations must be positive, got: " + maxConcurrentOps);
+                "maxConcurrentOperations must be positive, got: "
+                    + maxConcurrentOps);
         }
         MAX_CONCURRENT_OPERATIONS.set(maxConcurrentOps);
         OPERATION_SEMAPHORE.set(new Semaphore(maxConcurrentOps));
-        LOGGER.info("Max concurrent operations set to {}", maxConcurrentOps);
+        LOGGER.info("Max concurrent operations set to {}",
+            maxConcurrentOps);
     }
 
     /**
-     * Returns the configured maximum number of concurrent async operations.
+     * Returns the configured maximum number of concurrent operations.
      *
-     * @return configured max concurrent operations
+     * @return max concurrent operations
      */
     public int getMaxConcurrentOperations() {
         return MAX_CONCURRENT_OPERATIONS.get();
     }
 
+    /* ─────────────────  TEST CONTEXT LIFECYCLE  ────────────── */
+
     /**
-     * Sets test extension context
+     * Sets the JUnit test context for the current thread.
      *
-     * @param ctx extension context
+     * @param ctx the extension context
      */
     public void setTestContext(ExtensionContext ctx) {
         TEST_CONTEXT.set(ctx);
     }
 
     /**
-     * Returns extension context for current test
+     * Returns the JUnit test context for the current thread.
      *
-     * @return extension context
+     * @return the extension context
      */
     public ExtensionContext getTestContext() {
         return TEST_CONTEXT.get();
     }
 
     /**
-     * Clean test extension context
+     * Cleans up the test context ThreadLocal.
      */
     public void cleanTestContext() {
         TEST_CONTEXT.remove();
     }
 
     /**
-     * Clean test extension context
+     * Cleans up the cluster context ThreadLocal.
      */
     public void cleanClusterContext() {
         CURRENT_CLUSTER_CONTEXT.remove();
     }
+
+    /* ─────────────────  PACKAGE-PRIVATE ACCESSORS  ─────────── */
+
+    ResourceTrackerService tracker() {
+        if (tracker == null) {
+            tracker = new ResourceTrackerService(contextId, this::getTestContext,
+                r -> new ResourceItem<>(
+                    () -> deleteResourceWithWait(r), r));
+        }
+        return tracker;
+    }
+
+    private ResourceCreateService createService() {
+        if (createService == null) {
+            createService = new ResourceCreateService(this);
+        }
+        return createService;
+    }
+
+    private ResourceDeleteService deleteService() {
+        if (deleteService == null) {
+            deleteService = new ResourceDeleteService(this);
+        }
+        return deleteService;
+    }
+
+    String contextId() {
+        return contextId;
+    }
+
+    static List<Consumer<HasMetadata>> createCallbacks() {
+        return GLOBAL_CREATE_CALLBACKS;
+    }
+
+    static List<Consumer<HasMetadata>> deleteCallbacks() {
+        return GLOBAL_DELETE_CALLBACKS;
+    }
+
+    static AtomicReference<Semaphore> operationSemaphore() {
+        return OPERATION_SEMAPHORE;
+    }
+
+    static Executor executor() {
+        return EXECUTOR;
+    }
+
+    static Object creationLock() {
+        return CREATION_LOCK;
+    }
+
+    /* ─────────────────  STACK / BATCH API  ─────────────────── */
 
     /**
      * Pushes a resource to the stack.
@@ -405,13 +419,7 @@ public final class KubeResourceManager {
      * @param <T>      The type of the resource.
      */
     public <T extends HasMetadata> void pushToStack(T resource) {
-        ResourceItem<T> item = new ResourceItem<>(() -> deleteResourceWithWait(resource), resource);
-        List<ResourceItem<?>> batch = getOpenBatch();
-        if (batch != null) {
-            batch.add(item);
-        } else {
-            pushBatchToDeque(new ResourceBatch(item));
-        }
+        tracker().pushToStack(resource);
     }
 
     /**
@@ -420,29 +428,7 @@ public final class KubeResourceManager {
      * @param item The resource item to push.
      */
     public void pushToStack(ResourceItem<?> item) {
-        List<ResourceItem<?>> batch = getOpenBatch();
-        if (batch != null) {
-            batch.add(item);
-        } else {
-            pushBatchToDeque(new ResourceBatch(item));
-        }
-    }
-
-    private List<ResourceItem<?>> getOpenBatch() {
-        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        return map != null ? map.get(this.contextId) : null;
-    }
-
-    /**
-     * Pushes a complete batch to the deque for the current context and test.
-     *
-     * @param batch the resource batch to push
-     */
-    private void pushBatchToDeque(ResourceBatch batch) {
-        STORED_RESOURCES
-            .computeIfAbsent(this.contextId, c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(getTestContext().getDisplayName(), t -> new ConcurrentLinkedDeque<>())
-            .addLast(batch);
+        tracker().pushToStack(item);
     }
 
     /**
@@ -452,122 +438,53 @@ public final class KubeResourceManager {
      * @param <T>      The type of the resource.
      */
     public <T extends HasMetadata> void removeFromStack(T resource) {
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(this.contextId);
-        if (byTest == null) {
-            return;
-        }
-        ExtensionContext ctx = getTestContext();
-        if (ctx == null) {
-            return;
-        }
-        Deque<ResourceBatch> batches = byTest.get(ctx.getDisplayName());
-        if (batches == null) {
-            return;
-        }
-        for (ResourceBatch batch : batches) {
-            batch.removeIf(item -> item.resource() != null
-                && item.resource().getKind().equals(resource.getKind())
-                && Objects.equals(item.resource().getMetadata().getNamespace(),
-                    resource.getMetadata().getNamespace())
-                && item.resource().getMetadata().getName()
-                    .equals(resource.getMetadata().getName()));
-        }
-        batches.removeIf(ResourceBatch::isEmpty);
+        tracker().removeFromStack(resource);
     }
 
-    /* ───────────────────────  BATCH API  ──────────────────── */
-
     /**
-     * Opens an explicit batch. All resources created (via {@code createResource*} or
-     * {@code pushToStack}) on this thread between {@code startBatch()} and {@code endBatch()}
-     * are grouped into a single {@link ResourceBatch}.
+     * Opens an explicit batch. Resources created between
+     * {@code startBatch()} and {@code endBatch()} are grouped.
      *
-     * @throws IllegalStateException if a batch is already open on this thread
+     * @throws IllegalStateException if a batch is already open
      */
     public void startBatch() {
-        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        if (map != null && map.containsKey(this.contextId)) {
-            throw new IllegalStateException(
-                "A batch is already open on this thread for context "
-                    + this.contextId);
-        }
-        if (map == null) {
-            map = new ConcurrentHashMap<>();
-            CURRENT_BATCH.set(map);
-        }
-        map.put(this.contextId, new ArrayList<>());
+        tracker().startBatch();
     }
 
     /**
-     * Closes the explicit batch opened by {@code startBatch()} and pushes the
-     * collected items as a single {@link ResourceBatch}.
+     * Closes the explicit batch and pushes collected items.
      *
-     * @throws IllegalStateException if no batch is open on this thread
+     * @throws IllegalStateException if no batch is open
      */
     public void endBatch() {
-        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        List<ResourceItem<?>> items = map != null
-            ? map.remove(this.contextId) : null;
-        if (items == null) {
-            throw new IllegalStateException(
-                "No batch is open on this thread for context "
-                    + this.contextId);
-        }
-        if (map != null && map.isEmpty()) {
-            CURRENT_BATCH.remove();
-        }
-        if (!items.isEmpty()) {
-            pushBatchToDeque(new ResourceBatch(items));
-        }
+        tracker().endBatch();
     }
 
     /**
-     * Opens an explicit batch and returns an {@link AutoCloseable} that calls
-     * {@code endBatch()} when closed. Intended for try-with-resources usage:
+     * Opens a batch with try-with-resources support.
      *
-     * <pre>{@code
-     * try (var batch = manager.openBatch()) {
-     *     manager.createResourceWithWait(configMap);
-     *     manager.createResourceWithWait(deployment);
-     * }
-     * }</pre>
-     *
-     * @return an {@link AutoCloseable} that ends the batch
+     * @return AutoCloseable that calls endBatch()
      */
     public AutoCloseable openBatch() {
-        startBatch();
-        return this::endBatch;
+        return tracker().openBatch();
     }
 
     /**
-     * Flushes any open explicit batch on this thread: if items were collected
-     * (e.g. resources already created on the cluster), they are pushed to the
-     * deque so that {@code deleteResources()} will still clean them up.
-     * This is a safety net for lifecycle callbacks (e.g. afterEach) to ensure
-     * a leaked batch from a failed test does not leak resources on the cluster.
+     * Flushes any open explicit batch to the deque.
+     * Safety net for lifecycle callbacks.
      */
     public void clearCurrentBatch() {
-        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        if (map == null) {
-            return;
-        }
-        List<ResourceItem<?>> items = map.remove(this.contextId);
-        if (map.isEmpty()) {
-            CURRENT_BATCH.remove();
-        }
-        if (items != null && !items.isEmpty()) {
-            pushBatchToDeque(new ResourceBatch(items));
-        }
+        tracker().clearCurrentBatch();
     }
 
-    /* ─────────────────────────  RESOURCE I/O HELPERS  ─────────────────────── */
+    /* ─────────────────  RESOURCE I/O  ─────────────────────── */
 
     /**
-     * Reads Kubernetes resources from a file at the specified path.
+     * Reads Kubernetes resources from a file.
      *
-     * @param file The path to the file containing Kubernetes resources.
-     * @return A list of {@link HasMetadata} resources defined in the file.
-     * @throws IOException If an I/O error occurs reading from the file.
+     * @param file path to the resource file
+     * @return list of resources
+     * @throws IOException on I/O error
      */
     public List<HasMetadata> readResourcesFromFile(Path file) throws IOException {
         return kubeClient().readResourcesFromFile(file);
@@ -576,91 +493,44 @@ public final class KubeResourceManager {
     /**
      * Reads Kubernetes resources from an InputStream.
      *
-     * @param is The InputStream containing Kubernetes resources.
-     * @return A list of {@link HasMetadata} resources defined in the stream.
-     * @throws IOException If an I/O error occurs.
+     * @param is the input stream
+     * @return list of resources
+     * @throws IOException on I/O error
      */
     public List<HasMetadata> readResourcesFromFile(InputStream is) throws IOException {
         return kubeClient().readResourcesFromFile(is);
     }
 
-    /* ───────────────────────────  LOGGING HELPERS  ─────────────────────────── */
-
+    /* ─────────────────  LOGGING / INSPECTION  ──────────────── */
 
     /**
-     * Logs all managed resources across all test contexts with a set log level
+     * Logs all managed resources across all test contexts.
      *
-     * @param logLevel slf4j log level event
+     * @param logLevel slf4j log level
      */
     public void printAllResources(Level logLevel) {
-        LOGGER.atLevel(logLevel).log("Printing all managed resources across all contexts");
-        STORED_RESOURCES.forEach((ctxId, byTest) -> {
-            LOGGER.atLevel(logLevel).log("Context [{}]", ctxId);
-            byTest.forEach((test, batches) -> {
-                LOGGER.atLevel(logLevel).log("  Test: {}", test);
-                int batchIndex = 0;
-                for (ResourceBatch batch : batches) {
-                    LOGGER.atLevel(logLevel).log("Batch #{} ({} items)", batchIndex, batch.size());
-                    for (ResourceItem<?> item : batch.items()) {
-                        Optional.ofNullable(item.resource())
-                            .ifPresent(r -> LoggerUtils.logResource("Managed resource:", logLevel, r));
-                    }
-                    batchIndex++;
-                }
-            });
-        });
+        tracker().printAllResources(logLevel);
     }
 
     /**
-     * Logs all managed resources in current test context with set log level
+     * Logs managed resources in the current test context.
      *
-     * @param logLevel slf4j log level event
+     * @param logLevel slf4j log level
      */
     public void printCurrentResources(Level logLevel) {
-        String ctxId = this.contextId;
-        String test = getTestContext().getDisplayName();
-        LOGGER.atLevel(logLevel).log("Resources in [{}]/{}", ctxId, test);
-        Optional.ofNullable(STORED_RESOURCES.get(ctxId))
-            .map(m -> m.get(test))
-            .ifPresent(batches -> {
-                int batchIndex = 0;
-                for (ResourceBatch batch : batches) {
-                    LOGGER.atLevel(logLevel).log("Batch #{} ({} items)", batchIndex, batch.size());
-                    for (ResourceItem<?> item : batch.items()) {
-                        Optional.ofNullable(item.resource()).ifPresent(r ->
-                            LoggerUtils.logResource("Managed resource:", logLevel, r));
-                    }
-                    batchIndex++;
-                }
-            });
+        tracker().printCurrentResources(logLevel);
     }
 
     /**
-     * Returns a list of all resources currently tracked for the active test context.
+     * Returns tracked resources for the active test context.
      *
-     * @return list of tracked resources for the current test
+     * @return list of tracked resources
      */
     public List<HasMetadata> getCurrentResources() {
-        String test = getTestContext().getDisplayName();
-        return Optional.ofNullable(STORED_RESOURCES.get(this.contextId))
-            .map(m -> m.get(test))
-            .map(batches -> {
-                List<HasMetadata> resources = new ArrayList<>();
-                for (ResourceBatch batch : batches) {
-                    for (ResourceItem<?> item : batch.items()) {
-                        if (item.resource() != null) {
-                            resources.add(item.resource());
-                        }
-                    }
-                }
-                return Collections.unmodifiableList(resources);
-            })
-            .orElse(Collections.emptyList());
+        return tracker().getCurrentResources();
     }
 
-    /* ──────────────────  CREATE / UPDATE / DELETE IMPLEMENTATION  ─────────── */
-
-    // ---------------------------  Resource create  ---------------------------
+    /* ─────────────────  CREATE / UPDATE  ───────────────────── */
 
     /**
      * Creates resources without waiting for readiness.
@@ -670,7 +540,7 @@ public final class KubeResourceManager {
      */
     @SafeVarargs
     public final <T extends HasMetadata> void createResourceWithoutWait(T... resources) {
-        createOrUpdateResource(false, false, false, resources);
+        createService().createOrUpdateResource(false, false, false, resources);
     }
 
     /**
@@ -681,245 +551,54 @@ public final class KubeResourceManager {
      */
     @SafeVarargs
     public final <T extends HasMetadata> void createResourceWithWait(T... resources) {
-        createOrUpdateResource(false, true, false, resources);
+        createService().createOrUpdateResource(false, true, false, resources);
     }
 
     /**
      * Creates or updates resources and waits for readiness.
      *
-     * @param resources The resources to create.
+     * @param resources The resources to create or update.
      * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void createOrUpdateResourceWithWait(T... resources) {
-        createOrUpdateResource(false, true, true, resources);
+        createService().createOrUpdateResource(false, true, true, resources);
     }
 
     /**
-     * Creates or updates resources.
+     * Creates or updates resources without waiting.
      *
-     * @param resources The resources to create.
+     * @param resources The resources to create or update.
      * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void createOrUpdateResourceWithoutWait(T... resources) {
-        createOrUpdateResource(false, false, true, resources);
+        createService().createOrUpdateResource(false, false, true, resources);
     }
 
     /**
-     * Creates resources and wait on the end for all readiness.
+     * Creates resources asynchronously, waits for all at end.
      *
      * @param resources The resources to create.
      * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void createResourceAsyncWait(T... resources) {
-        createOrUpdateResource(true, true, false, resources);
+        createService().createOrUpdateResource(true, true, false, resources);
     }
 
     /**
-     * Creates or updates resources and wait on the end for all readiness.
+     * Creates or updates resources asynchronously, waits for all at end.
      *
-     * @param resources The resources to create.
+     * @param resources The resources to create or update.
      * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void createOrUpdateResourceAsyncWait(T... resources) {
-        createOrUpdateResource(true, true, true, resources);
+        createService().createOrUpdateResource(true, true, true, resources);
     }
 
-    /**
-     * Creates resources with or without waiting for readiness.
-     *
-     * @param async       Flag waiting for all resources on the end
-     * @param waitReady   Flag indicating whether to wait for readiness.
-     * @param allowUpdate Flag indicating if update resource is allowed
-     * @param resources   The resources to create.
-     * @param <T>         The type of the resources.
-     */
-    @SafeVarargs
-    private <T extends HasMetadata> void createOrUpdateResource(
-        boolean async, boolean waitReady, boolean allowUpdate, T... resources) {
-
-        List<ResourceItem<?>> openBatch = getOpenBatch();
-        List<ResourceItem<?>> implicitBatchItems = new ArrayList<>();
-
-        // Phase 1: Register all items for cleanup BEFORE starting creation.
-        // This ensures partially-created resources are still tracked for deletion.
-        for (T resource : resources) {
-            ResourceItem<T> item = new ResourceItem<>(() -> deleteResourceWithWait(resource), resource);
-            if (openBatch != null) {
-                openBatch.add(item);
-            } else {
-                implicitBatchItems.add(item);
-            }
-        }
-        if (openBatch == null && !implicitBatchItems.isEmpty()) {
-            pushBatchToDeque(new ResourceBatch(implicitBatchItems));
-        }
-
-        // Phase 2: Create/update resources and wait for readiness.
-        List<CompletableFuture<Void>> promises = new ArrayList<>();
-        for (T resource : resources) {
-            ResourceType<T> type = findResourceType(resource);
-            if (globalStoreYamlPath != null) {
-                writeResourceAsYaml(resource);
-            }
-            if (type == null) {
-                promises.add(createOrUpdateResource(async, waitReady, allowUpdate, resource));
-            } else {
-                promises.add(createOrUpdateResource(async, waitReady, allowUpdate, resource, type));
-            }
-        }
-
-        try {
-            CompletableFuture.allOf(promises.toArray(CompletableFuture[]::new)).join();
-        } catch (CompletionException e) {
-            Throwable cause = e.getCause();
-            LOGGER.error("Exception during wait for resources to be ready", cause);
-            throw new IllegalStateException(cause.getMessage(), cause);
-        }
-    }
-
-    /**
-     * Creates a single resource with or without waiting for readiness.
-     *
-     * @param async       Flag waiting for all resources on the end
-     * @param waitReady   Flag indicating whether to wait for readiness.
-     * @param allowUpdate Flag indicating if update resource is allowed
-     * @param resource    The resource to create.
-     * @param <T>         The type of the resources.
-     * @return a CompletableFuture promise that will complete when the resource is
-     *         created/updated or when the resource becomes ready, if waitReady is
-     *         true.
-     */
-    private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateResource(
-            boolean async, boolean waitReady, boolean allowUpdate, T resource) {
-
-        CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
-            Semaphore sem = OPERATION_SEMAPHORE.get();
-            sem.acquireUninterruptibly();
-            try {
-                if (allowUpdate && kubeClient().getClient().resource(resource).get() != null) {
-                    LoggerUtils.logResource("Updating", resource);
-                    kubeClient().getClient().resource(resource).update();
-                } else {
-                    LoggerUtils.logResource("Creating", resource);
-                    kubeClient().getClient().resource(resource).create();
-                }
-            } finally {
-                sem.release();
-            }
-            invokeCreateCallbacksSafely(resource);
-        }, EXECUTOR);
-
-        if (!waitReady) {
-            return promise;
-        }
-
-        promise = promise.thenRunAsync(() -> {
-            Semaphore sem = OPERATION_SEMAPHORE.get();
-            sem.acquireUninterruptibly();
-            try {
-                assertTrue(waitResourceCondition(resource,
-                        new ResourceCondition<>(p -> {
-                            if (isResourceWithReadiness(resource)) {
-                                return kubeClient().getClient().resource(resource).isReady();
-                            }
-                            return kubeClient().getClient().resource(resource) != null;
-                        }, "ready")),
-                    "Timed out waiting for " + resource.getKind() + "/" +
-                        resource.getMetadata().getName());
-            } finally {
-                sem.release();
-            }
-        }, EXECUTOR);
-
-        if (async) {
-            return promise;
-        } else {
-            promise.whenComplete((nothing, error) -> {
-                if (error != null) {
-                    LOGGER.error("Exception during wait for resource {}/{} to be ready",
-                        resource.getMetadata().getNamespace(),
-                        resource.getMetadata().getName(),
-                        error
-                    );
-                }
-            }).join(); // will throw CompletionException when error != null
-
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    /**
-     * Creates a single resource with or without waiting for readiness.
-     *
-     * @param async       Flag waiting for all resources on the end
-     * @param waitReady   Flag indicating whether to wait for readiness.
-     * @param allowUpdate Flag indicating if update resource is allowed
-     * @param resource    The resource to create.
-     * @param type        The resource type helper
-     * @param <T>         The type of the resources.
-     * @return a CompletableFuture promise that will complete when the resource is
-     *         created/updated or when the resource becomes ready, if waitReady is
-     *         true.
-     */
-    private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateResource(
-            boolean async, boolean waitReady, boolean allowUpdate, T resource, ResourceType<T> type) {
-
-        CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
-            Semaphore sem = OPERATION_SEMAPHORE.get();
-            sem.acquireUninterruptibly();
-            try {
-                if (allowUpdate && kubeClient().getClient().resource(resource).get() != null) {
-                    LoggerUtils.logResource("Updating", resource);
-                    type.update(resource);
-                } else {
-                    LoggerUtils.logResource("Creating", resource);
-                    type.create(resource);
-                }
-            } finally {
-                sem.release();
-            }
-            invokeCreateCallbacksSafely(resource);
-        }, EXECUTOR);
-
-        if (!waitReady) {
-            return promise;
-        }
-
-        long timeout = Objects.requireNonNullElse(type.getTimeoutForResourceReadiness(),
-            KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
-
-        promise = promise.thenRunAsync(() -> {
-            Semaphore sem = OPERATION_SEMAPHORE.get();
-            sem.acquireUninterruptibly();
-            try {
-                assertTrue(waitResourceCondition(resource, ResourceCondition.readiness(type), timeout),
-                    "Timed out waiting for " + resource.getKind() + "/" +
-                        resource.getMetadata().getName());
-            } finally {
-                sem.release();
-            }
-        }, EXECUTOR);
-
-        if (async) {
-            return promise;
-        } else {
-            promise.whenComplete((nothing, error) -> {
-                if (error != null) {
-                    LOGGER.error("Exception during wait for resource {}/{} to be ready",
-                        resource.getMetadata().getNamespace(),
-                        resource.getMetadata().getName(),
-                        error
-                    );
-                }
-            }).join(); // will throw CompletionException when error != null
-
-            return CompletableFuture.completedFuture(null);
-        }
-    }
+    /* ─────────────────  DELETE / REPLACE  ──────────────────── */
 
     /**
      * Deletes resources with wait asynchronously.
@@ -929,81 +608,29 @@ public final class KubeResourceManager {
      */
     @SafeVarargs
     public final <T extends HasMetadata> void deleteResourceAsyncWait(T... resources) {
-        deleteResource(true, true, resources);
+        deleteService().deleteResource(true, true, resources);
     }
 
     /**
-     * Deletes resources with wait.
+     * Deletes resources and waits for each to be fully removed.
      *
      * @param resources The resources to delete.
      * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void deleteResourceWithWait(T... resources) {
-        deleteResource(false, true, resources);
+        deleteService().deleteResource(false, true, resources);
     }
 
     /**
-     * Deletes resources without wait.
+     * Deletes resources without waiting for removal.
      *
      * @param resources The resources to delete.
      * @param <T>       The type of the resources.
      */
     @SafeVarargs
     public final <T extends HasMetadata> void deleteResourceWithoutWait(T... resources) {
-        deleteResource(false, false, resources);
-    }
-
-    /**
-     * Deletes resources.
-     *
-     * @param async           Enables async deletion.
-     * @param waitForDeletion Flag indicating whether to wait for resource deletion.
-     * @param resources       The resources to delete.
-     * @param <T>             The type of the resources.
-     */
-    @SafeVarargs
-    private <T extends HasMetadata> void deleteResource(boolean async, boolean waitForDeletion, T... resources) {
-        List<CompletableFuture<Void>> waiters = new ArrayList<>();
-        for (T resource : resources) {
-            ResourceType<T> type = findResourceType(resource);
-            LoggerUtils.logResource("Deleting", resource);
-            try {
-                if (type == null) {
-                    kubeClient().getClient().resource(resource).delete();
-                } else {
-                    type.delete(resource);
-                }
-
-                removeFromStack(resource);
-
-                if (waitForDeletion) {
-                    decideDeleteWaitAsync(waiters, async, resource);
-                }
-
-                for (Consumer<HasMetadata> cb : GLOBAL_DELETE_CALLBACKS) {
-                    try {
-                        cb.accept(resource);
-                    } catch (Exception cbEx) {
-                        LOGGER.warn("Delete callback failed for {}/{}: {}",
-                            resource.getKind(), resource.getMetadata().getName(),
-                            cbEx.getMessage(), cbEx);
-                    }
-                }
-            } catch (Exception e) {
-                LOGGER.error("Deletion of {}/{} failed with the following error: {}",
-                    resource.getKind(), resource.getMetadata().getName(), e.getMessage(), e);
-            }
-        }
-
-        List<Exception> errors = new ArrayList<>();
-        collectAsyncErrors(waiters, errors);
-        if (!errors.isEmpty()) {
-            RuntimeException composite = new RuntimeException(
-                "Failed to delete " + errors.size() + " resource(s)");
-            errors.forEach(composite::addSuppressed);
-            throw composite;
-        }
+        deleteService().deleteResource(false, false, resources);
     }
 
     /**
@@ -1014,62 +641,46 @@ public final class KubeResourceManager {
      */
     @SafeVarargs
     public final <T extends HasMetadata> void updateResource(T... resources) {
-        for (T resource : resources) {
-            LoggerUtils.logResource("Updating", resource);
-            ResourceType<T> type = findResourceType(resource);
-            if (type != null) {
-                type.update(resource);
-            } else {
-                kubeClient().getClient().resource(resource).update();
-            }
-        }
+        deleteService().updateResource(resources);
     }
 
     /**
-     * Method for replacing the resource with retries.
-     * It uses {@link #replaceResource(HasMetadata, Consumer)} in try-catch block and in case
-     * that the exception is thrown, it checks if we got conflict exception (meaning that we
-     * should re-apply the changes on updated resource).
-     * Otherwise, the {@link RuntimeException} is thrown (as we are not in conflict and there
-     * is something else).
-     * This encapsulates {@link #replaceResourceWithRetries(HasMetadata, Consumer, int)}
-     * where the default number of retries is 3.
+     * Replaces a resource with retries on conflict (default 3).
      *
-     * @param resource The resource that should be updated.
-     * @param editor   Editor containing all changes that should be propagated to resource
+     * @param resource The resource to replace.
+     * @param editor   Editor with changes.
      * @param <T>      The type of the resource.
      */
-    public <T extends HasMetadata> void replaceResourceWithRetries(T resource, Consumer<T> editor) {
+    public <T extends HasMetadata> void replaceResourceWithRetries(
+        T resource, Consumer<T> editor) {
         replaceResourceWithRetries(resource, editor, 3);
     }
 
     /**
-     * Method for replacing the resource with retries.
-     * It uses {@link #replaceResource(HasMetadata, Consumer)} in try-catch block and in case
-     * that the exception is thrown, it checks if we got conflict exception (meaning that we
-     * should re-apply the changes on updated resource).
-     * Otherwise, the {@link RuntimeException} is thrown (as we are not in conflict and there
-     * is something else).
-     * This is retried for number of times specified in {@param retries}.
+     * Replaces a resource with retries on conflict.
      *
-     * @param resource The resource that should be updated.
-     * @param editor   Editor containing all changes that should be propagated to resource
-     * @param retries  Number of retries with which we should try to replace the resource
+     * @param resource The resource to replace.
+     * @param editor   Editor with changes.
+     * @param retries  Number of retries.
      * @param <T>      The type of the resource.
      */
-    public <T extends HasMetadata> void replaceResourceWithRetries(T resource, Consumer<T> editor, int retries) {
+    public <T extends HasMetadata> void replaceResourceWithRetries(
+        T resource, Consumer<T> editor, int retries) {
         int attempt = 0;
         while (true) {
             try {
                 replaceResource(resource, editor);
                 return;
-            } catch (CompletionException ce) {
+            } catch (java.util.concurrent.CompletionException ce) {
                 Throwable cause = ce.getCause();
-                if (isNotConflict(cause) || ++attempt >= retries) {
-                    throw (cause instanceof RuntimeException re) ? re : new RuntimeException(cause);
+                if (ResourceDeleteService.isNotConflict(cause)
+                    || ++attempt >= retries) {
+                    throw (cause instanceof RuntimeException re)
+                        ? re : new RuntimeException(cause);
                 }
-            } catch (KubernetesClientException kce) {
-                if (isNotConflict(kce) || ++attempt >= retries) {
+            } catch (io.fabric8.kubernetes.client.KubernetesClientException kce) {
+                if (ResourceDeleteService.isNotConflict(kce)
+                    || ++attempt >= retries) {
                     throw kce;
                 }
             }
@@ -1077,84 +688,73 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Checks if the {@link Throwable} is NOT a conflict (HTTP 409) from the Kubernetes API,
-     * meaning the error should be propagated immediately rather than retried.
+     * Replaces a resource using the editor.
      *
-     * @param t throwable thrown during operation
-     * @return {@code true} if the error is not a 409 conflict and should be thrown,
-     *         {@code false} if it is a 409 conflict and the operation can be retried
-     */
-    private static boolean isNotConflict(Throwable t) {
-        return !(t instanceof KubernetesClientException kce && kce.getCode() == 409);
-    }
-
-    /**
-     * Based on {@param resource} and {@param editor} replaces the current resource.
-     * In case that the {@link ResourceType} is not found, the default client is used.
-     *
-     * @param resource The resource that should be updated.
-     * @param editor   Editor containing all changes that should be propagated to resource
+     * @param resource The resource to replace.
+     * @param editor   Editor with changes.
      * @param <T>      The type of the resource.
      */
-    public <T extends HasMetadata> void replaceResource(T resource, Consumer<T> editor) {
-        ResourceType<T> type = findResourceType(resource);
-        if (type != null) {
-            type.replace(resource, editor);
-        } else {
-            T current = kubeClient().getClient().resource(resource).get();
-            editor.accept(current);
-            kubeClient().getClient().resource(current).update();
-        }
+    public <T extends HasMetadata> void replaceResource(
+        T resource, Consumer<T> editor) {
+        deleteService().replaceResource(resource, editor);
     }
 
-    // ---------------------------  Wait condition -----------------------------
+    /* ─────────────────  WAIT CONDITIONS  ──────────────────── */
 
     /**
-     * Waits for a resource condition to be fulfilled.
+     * Waits for a resource condition with default timeout.
      *
      * @param resource  The resource to wait for.
      * @param condition The condition to fulfill.
      * @param <T>       The type of the resource.
-     * @return True if the condition is fulfilled, false otherwise.
+     * @return true if condition is fulfilled
      */
-    public <T extends HasMetadata> boolean waitResourceCondition(T resource, ResourceCondition<T> condition) {
-        return waitResourceCondition(resource, condition, KubeTestConstants.GLOBAL_TIMEOUT);
+    public <T extends HasMetadata> boolean waitResourceCondition(
+        T resource, ResourceCondition<T> condition) {
+        return waitResourceCondition(resource, condition,
+            KubeTestConstants.GLOBAL_TIMEOUT);
     }
 
     /**
-     * Waits for a resource condition to be fulfilled.
+     * Waits for a resource condition with custom timeout.
      *
      * @param resource        The resource to wait for.
      * @param condition       The condition to fulfill.
+     * @param resourceTimeout Timeout in milliseconds.
      * @param <T>             The type of the resource.
-     * @param resourceTimeout Timeout for resource condition
-     * @return True if the condition is fulfilled, false otherwise.
+     * @return true if condition is fulfilled
      */
     public <T extends HasMetadata> boolean waitResourceCondition(
-        T resource, ResourceCondition<T> condition, long resourceTimeout) {
+        T resource, ResourceCondition<T> condition,
+        long resourceTimeout) {
         return waitResourceCondition(resource, condition, resourceTimeout,
             () -> kubeClient().getClient().resource(resource).get());
     }
 
     /**
-     * Waits for a resource condition to be fulfilled.
+     * Waits for a resource condition with custom supplier.
      *
      * @param resource         The resource to wait for.
      * @param condition        The condition to fulfill.
+     * @param resourceTimeout  Timeout in milliseconds.
+     * @param resourceSupplier Supplier for current resource state.
      * @param <T>              The type of the resource.
-     * @param resourceTimeout  Timeout for resource condition
-     * @param resourceSupplier Supplier with method for obtaining the resource - using client, or a different way.
-     * @return True if the condition is fulfilled, false otherwise.
+     * @return true if condition is fulfilled
      */
     public <T extends HasMetadata> boolean waitResourceCondition(
-        T resource, ResourceCondition<T> condition, long resourceTimeout, Supplier<T> resourceSupplier) {
+        T resource, ResourceCondition<T> condition,
+        long resourceTimeout,
+        java.util.function.Supplier<T> resourceSupplier) {
         assertNotNull(resource);
         assertNotNull(resource.getMetadata());
         assertNotNull(resource.getMetadata().getName());
         boolean[] ready = new boolean[1];
-        Wait.until(String.format("Resource condition: %s to be fulfilled for resource %s/%s",
-                condition.conditionName(), resource.getKind(), resource.getMetadata().getName()),
-            KubeTestConstants.GLOBAL_POLL_INTERVAL_MEDIUM, resourceTimeout, () -> {
+        Wait.until(String.format(
+            "Resource condition: %s to be fulfilled for resource %s/%s",
+            condition.conditionName(), resource.getKind(),
+            resource.getMetadata().getName()),
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_MEDIUM,
+            resourceTimeout, () -> {
                 LOGGER.trace("Obtaining current state of resource: {}/{}",
                     resource.getKind(), resource.getMetadata().getName());
                 T r = resourceSupplier.get();
@@ -1166,184 +766,54 @@ public final class KubeResourceManager {
         return ready[0];
     }
 
-    /* --------------------------  DELETE ALL RESOURCES ----------------------- */
+    /* ─────────────────  BULK CLEANUP  ─────────────────────── */
 
     /**
-     * Deletes all stored resources.
+     * Deletes all stored resources (async, batch-LIFO order).
      */
     public void deleteResources() {
-        deleteResources(true);
+        deleteService().deleteResources(true);
     }
 
     /**
      * Deletes all stored resources in batch-LIFO order.
-     * Batches are processed in reverse creation order (last batch first).
-     * When {@code async} is true, all items within a batch are deleted concurrently,
-     * but the method waits for the batch to finish before moving to the next one.
-     * When {@code async} is false, items are deleted sequentially within each batch.
      *
-     * @param async sets async or sequential deletion within each batch
+     * @param async if true, items within a batch are deleted concurrently
      */
     public void deleteResources(boolean async) {
-        String ctxId = this.contextId;
-        String testName = getTestContext().getDisplayName();
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(ctxId);
-        if (byTest == null || byTest.get(testName) == null || byTest.get(testName).isEmpty()) {
-            LOGGER.info("No resources to delete for [{}]/{}", ctxId, testName);
-            return;
-        }
-        LoggerUtils.logSeparator();
-        LOGGER.info("Deleting all resources for [{}]/{}", ctxId, testName);
-        Deque<ResourceBatch> batches = byTest.get(testName);
-        List<Exception> errors = new ArrayList<>();
-        try {
-            int batchIndex = batches.size();
-            while (!batches.isEmpty()) {
-                ResourceBatch batch = batches.pollLast();
-                batchIndex--;
-                LOGGER.info("Deleting batch #{} ({} items)", batchIndex, batch.size());
-                deleteBatch(batch, async, errors);
-            }
-        } finally {
-            byTest.remove(testName);
-            if (byTest.isEmpty()) {
-                STORED_RESOURCES.remove(ctxId);
-            }
-            LoggerUtils.logSeparator();
-        }
-        if (!errors.isEmpty()) {
-            RuntimeException composite = new RuntimeException(
-                "Failed to delete " + errors.size() + " resource(s)");
-            errors.forEach(composite::addSuppressed);
-            throw composite;
-        }
+        deleteService().deleteResources(async);
     }
 
-    /**
-     * Deletes all items within a single batch.
-     *
-     * @param batch the batch to delete
-     * @param async if true, items are deleted concurrently; if false, sequentially
-     * @param errors list to collect any deletion errors
-     */
-    private void deleteBatch(ResourceBatch batch, boolean async, List<Exception> errors) {
-        List<CompletableFuture<Void>> waiters = new ArrayList<>();
-        for (ResourceItem<?> item : batch.items()) {
-            CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                Semaphore sem = OPERATION_SEMAPHORE.get();
-                sem.acquireUninterruptibly();
-                try {
-                    item.throwableRunner().run();
-                } catch (Exception e) {
-                    throw new RuntimeException(e.getMessage(), e);
-                } finally {
-                    sem.release();
-                }
-            }, EXECUTOR);
-            if (async) {
-                waiters.add(cf);
-            } else {
-                String resNs = item.resource() != null
-                    && item.resource().getMetadata() != null
-                    ? item.resource().getMetadata().getNamespace() : null;
-                String resName = item.resource() != null
-                    && item.resource().getMetadata() != null
-                    ? item.resource().getMetadata().getName() : null;
-                try {
-                    cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
-                } catch (TimeoutException e) {
-                    LOGGER.error("Timeout waiting for deletion of resource {}/{}",
-                        resNs, resName, e);
-                    errors.add(e);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    LOGGER.error("Interrupted during deletion of resource {}/{}",
-                        resNs, resName, e);
-                    errors.add(e);
-                } catch (ExecutionException e) {
-                    LOGGER.error("Exception during deletion of resource {}/{}",
-                        resNs, resName, e);
-                    errors.add(e);
-                }
-            }
-        }
-        collectAsyncErrors(waiters, errors);
-    }
+    /* ─────────────────  SHARED HELPERS  ────────────────────── */
 
     /**
-     * Collects errors from async deletion futures without throwing.
+     * Finds a registered ResourceType by kind.
      *
-     * @param waiters List of {@link CompletableFuture} from async deletions.
-     * @param errors  List to collect any exceptions into.
+     * @param resource the resource to look up
+     * @param <T>      resource type
+     * @return the ResourceType or null
      */
-    /* test */ void collectAsyncErrors(List<CompletableFuture<Void>> waiters,
-                                       List<Exception> errors) {
-        if (waiters.isEmpty()) {
-            return;
-        }
-        try {
-            CompletableFuture.allOf(waiters.toArray(new CompletableFuture[0]))
-                .get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            collectIndividualFutureErrors(waiters, errors);
-            if (errors.isEmpty()) {
-                errors.add(e);
-            }
-        } catch (TimeoutException | ExecutionException e) {
-            collectIndividualFutureErrors(waiters, errors);
-            if (errors.isEmpty()) {
-                errors.add(e);
+    @SuppressWarnings("unchecked")
+    <T extends HasMetadata> ResourceType<T> findResourceType(T resource) {
+        ResourceType<?>[] types = GLOBAL_RESOURCE_TYPES.get();
+        for (ResourceType<?> rt : types) {
+            if (rt.getKind().equals(resource.getKind())) {
+                return (ResourceType<T>) rt;
             }
         }
-    }
-
-    /**
-     * Iterates individual futures and collects exceptions from any that completed exceptionally.
-     *
-     * @param waiters List of completed or timed-out futures.
-     * @param errors  List to collect exceptions into.
-     */
-    private void collectIndividualFutureErrors(List<CompletableFuture<Void>> waiters,
-                                               List<Exception> errors) {
-        for (CompletableFuture<Void> future : waiters) {
-            if (future.isCompletedExceptionally()) {
-                try {
-                    future.getNow(null);
-                } catch (Exception individual) {
-                    errors.add(individual);
-                }
-            }
-        }
-    }
-
-    /**
-     * Invokes create callbacks for the given resource, catching any exceptions to prevent
-     * a failing callback from aborting creation of remaining resources.
-     *
-     * @param resource The resource whose create callbacks should be invoked.
-     * @param <T>      The type of the resource.
-     */
-    /* test */ <T extends HasMetadata> void invokeCreateCallbacksSafely(T resource) {
-        for (Consumer<HasMetadata> cb : GLOBAL_CREATE_CALLBACKS) {
-            try {
-                cb.accept(resource);
-            } catch (Exception e) {
-                LOGGER.warn("Create callback failed for {}/{}: {}",
-                    resource.getKind(), resource.getMetadata().getName(),
-                    e.getMessage(), e);
-            }
-        }
+        return null;
     }
 
     /**
      * Returns a null-safe description of a resource item for logging.
      *
      * @param item The resource item to describe.
-     * @return A string like "namespace/name" or "&lt;unknown resource&gt;".
+     * @return A string like "Kind namespace/name" or
+     *         "&lt;unknown resource&gt;".
      */
     /* test */ static String resourceDescription(ResourceItem<?> item) {
-        if (item.resource() == null || item.resource().getMetadata() == null) {
+        if (item.resource() == null
+            || item.resource().getMetadata() == null) {
             return "<unknown resource>";
         }
         String kind = item.resource().getKind();
@@ -1356,101 +826,40 @@ public final class KubeResourceManager {
         return prefix + name;
     }
 
+    /* ────────  TEST-ONLY DELEGATORS (preserve test compat)  ── */
+
     /**
-     * Return ResourceType implementation if it is specified in resourceTypes based on kind
+     * Collects errors from async deletion futures.
      *
-     * @param resource HasMetadata resource to find
-     * @param <T>      The type of the resource.
-     * @return {@link ResourceType}
+     * @param waiters List of futures.
+     * @param errors  List to collect exceptions.
      */
-    @SuppressWarnings("unchecked")
-    private <T extends HasMetadata> ResourceType<T> findResourceType(T resource) {
-        ResourceType<?>[] types = GLOBAL_RESOURCE_TYPES.get();
-        for (ResourceType<?> rt : types) {
-            if (rt.getKind().equals(resource.getKind())) {
-                return (ResourceType<T>) rt;
-            }
-        }
-        return null;
+    /* test */ void collectAsyncErrors(
+        List<CompletableFuture<Void>> waiters, List<Exception> errors) {
+        deleteService().collectAsyncErrors(waiters, errors);
     }
 
-    private <T extends HasMetadata> boolean isResourceWithReadiness(T resource) {
-        return resource instanceof Deployment ||
-            resource instanceof io.fabric8.kubernetes.api.model.extensions.Deployment ||
-            resource instanceof ReplicaSet ||
-            resource instanceof Pod ||
-            resource instanceof ReplicationController ||
-            resource instanceof Endpoints ||
-            resource instanceof Node ||
-            resource instanceof StatefulSet;
+    /**
+     * Invokes create callbacks safely.
+     *
+     * @param resource The resource.
+     * @param <T>      The type.
+     */
+    /* test */ <T extends HasMetadata> void invokeCreateCallbacksSafely(
+        T resource) {
+        createService().invokeCreateCallbacksSafely(resource);
     }
 
-    private void writeResourceAsYaml(HasMetadata res) {
-        synchronized (CREATION_LOCK) {
-            File dir = Paths.get(globalStoreYamlPath).resolve("test-files").resolve(this.contextId)
-                .resolve(getTestContext().getRequiredTestClass().getName())
-                .toFile();
-            if (getTestContext().getTestMethod().isPresent()) {
-                dir = dir.toPath().resolve(getTestContext().getRequiredTestMethod().getName()).toFile();
-            } else {
-                dir = dir.toPath().resolve("before-all").toFile();
-            }
-            if (!dir.exists() && !dir.mkdirs()) {
-                throw new RuntimeException("Cannot create dir " + dir);
-            }
-            String yaml = Serialization.asYaml(res);
-            try {
-                Files.writeString(dir.toPath().resolve(res.getKind() + "-" +
-                    (res.getMetadata().getNamespace() == null ? "" : res.getMetadata().getNamespace() + "-") +
-                    res.getMetadata().getName() + ".yaml"), yaml, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage(), e);
-            }
-        }
-    }
-
+    /**
+     * Decides async or sync deletion wait.
+     *
+     * @param waiters futures list
+     * @param async   async flag
+     * @param res     the resource
+     * @param <T>     resource type
+     */
     /* test */ <T extends HasMetadata> void decideDeleteWaitAsync(
         List<CompletableFuture<Void>> waiters, boolean async, T res) {
-        CompletableFuture<Void> cf;
-        if (async) {
-            cf = CompletableFuture.runAsync(() -> {
-                Semaphore sem = OPERATION_SEMAPHORE.get();
-                sem.acquireUninterruptibly();
-                try {
-                    assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
-                        "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName());
-                } finally {
-                    sem.release();
-                }
-            }, EXECUTOR);
-        } else {
-            cf = CompletableFuture.runAsync(() ->
-                assertTrue(waitResourceCondition(res, ResourceCondition.deletion()),
-                    "Timed out deleting " + res.getKind() + "/" + res.getMetadata().getName()), EXECUTOR);
-        }
-        if (async) {
-            waiters.add(cf);
-        } else {
-            try {
-                cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException e) {
-                LOGGER.error("Timeout waiting for deletion of resource {}/{}",
-                    res.getMetadata().getNamespace(),
-                    res.getMetadata().getName(),
-                    e
-                );
-                throw new IllegalStateException(e.getMessage(), e);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(e.getMessage(), e);
-            } catch (ExecutionException e) {
-                LOGGER.error("Exception during wait for resource {}/{} to be deleted",
-                    res.getMetadata().getNamespace(),
-                    res.getMetadata().getName(),
-                    e
-                );
-                throw new IllegalStateException(e.getMessage(), e);
-            }
-        }
+        deleteService().decideDeleteWaitAsync(waiters, async, res);
     }
 }
