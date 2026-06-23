@@ -38,14 +38,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Stack;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -123,7 +124,9 @@ public final class KubeResourceManager {
     private static final ThreadLocal<String> CURRENT_CLUSTER_CONTEXT = ThreadLocal.withInitial(() ->
         KubeTestConstants.DEFAULT_CONTEXT_NAME);
     private static final ThreadLocal<ExtensionContext> TEST_CONTEXT = new ThreadLocal<>();
-    private static final Map<String, Map<String, Stack<ResourceItem<?>>>> STORED_RESOURCES = new ConcurrentHashMap<>();
+    private static final Map<String, Map<String, Deque<ResourceBatch>>> STORED_RESOURCES =
+        new ConcurrentHashMap<>();
+    private static final ThreadLocal<List<ResourceItem<?>>> CURRENT_BATCH = new ThreadLocal<>();
 
     // Lock used during store of resources that are being created by KubeResourceManager
     private static final Object CREATION_LOCK = new Object();
@@ -401,10 +404,13 @@ public final class KubeResourceManager {
      * @param <T>      The type of the resource.
      */
     public <T extends HasMetadata> void pushToStack(T resource) {
-        STORED_RESOURCES
-            .computeIfAbsent(this.contextId, c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(getTestContext().getDisplayName(), t -> new Stack<>())
-            .push(new ResourceItem<>(() -> deleteResourceWithWait(resource), resource));
+        ResourceItem<T> item = new ResourceItem<>(() -> deleteResourceWithWait(resource), resource);
+        List<ResourceItem<?>> batch = CURRENT_BATCH.get();
+        if (batch != null) {
+            batch.add(item);
+        } else {
+            pushBatchToDeque(new ResourceBatch(item));
+        }
     }
 
     /**
@@ -413,10 +419,24 @@ public final class KubeResourceManager {
      * @param item The resource item to push.
      */
     public void pushToStack(ResourceItem<?> item) {
+        List<ResourceItem<?>> batch = CURRENT_BATCH.get();
+        if (batch != null) {
+            batch.add(item);
+        } else {
+            pushBatchToDeque(new ResourceBatch(item));
+        }
+    }
+
+    /**
+     * Pushes a complete batch to the deque for the current context and test.
+     *
+     * @param batch the resource batch to push
+     */
+    private void pushBatchToDeque(ResourceBatch batch) {
         STORED_RESOURCES
             .computeIfAbsent(this.contextId, c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(getTestContext().getDisplayName(), t -> new Stack<>())
-            .push(item);
+            .computeIfAbsent(getTestContext().getDisplayName(), t -> new ConcurrentLinkedDeque<>())
+            .addLast(batch);
     }
 
     /**
@@ -426,7 +446,7 @@ public final class KubeResourceManager {
      * @param <T>      The type of the resource.
      */
     public <T extends HasMetadata> void removeFromStack(T resource) {
-        Map<String, Stack<ResourceItem<?>>> byTest = STORED_RESOURCES.get(this.contextId);
+        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(this.contextId);
         if (byTest == null) {
             return;
         }
@@ -434,14 +454,85 @@ public final class KubeResourceManager {
         if (ctx == null) {
             return;
         }
-        Stack<ResourceItem<?>> stack = byTest.get(ctx.getDisplayName());
-        if (stack == null) {
+        Deque<ResourceBatch> batches = byTest.get(ctx.getDisplayName());
+        if (batches == null) {
             return;
         }
-        stack.removeIf(item -> item.resource() != null
-            && item.resource().getKind().equals(resource.getKind())
-            && Objects.equals(item.resource().getMetadata().getNamespace(), resource.getMetadata().getNamespace())
-            && item.resource().getMetadata().getName().equals(resource.getMetadata().getName()));
+        for (ResourceBatch batch : batches) {
+            batch.removeIf(item -> item.resource() != null
+                && item.resource().getKind().equals(resource.getKind())
+                && Objects.equals(item.resource().getMetadata().getNamespace(),
+                    resource.getMetadata().getNamespace())
+                && item.resource().getMetadata().getName()
+                    .equals(resource.getMetadata().getName()));
+        }
+        batches.removeIf(ResourceBatch::isEmpty);
+    }
+
+    /* ───────────────────────  BATCH API  ──────────────────── */
+
+    /**
+     * Opens an explicit batch. All resources created (via {@code createResource*} or
+     * {@code pushToStack}) on this thread between {@code startBatch()} and {@code endBatch()}
+     * are grouped into a single {@link ResourceBatch}.
+     *
+     * @throws IllegalStateException if a batch is already open on this thread
+     */
+    public void startBatch() {
+        if (CURRENT_BATCH.get() != null) {
+            throw new IllegalStateException("A batch is already open on this thread");
+        }
+        CURRENT_BATCH.set(new ArrayList<>());
+    }
+
+    /**
+     * Closes the explicit batch opened by {@code startBatch()} and pushes the
+     * collected items as a single {@link ResourceBatch}.
+     *
+     * @throws IllegalStateException if no batch is open on this thread
+     */
+    public void endBatch() {
+        List<ResourceItem<?>> items = CURRENT_BATCH.get();
+        if (items == null) {
+            throw new IllegalStateException("No batch is open on this thread");
+        }
+        CURRENT_BATCH.remove();
+        if (!items.isEmpty()) {
+            pushBatchToDeque(new ResourceBatch(items));
+        }
+    }
+
+    /**
+     * Opens an explicit batch and returns an {@link AutoCloseable} that calls
+     * {@code endBatch()} when closed. Intended for try-with-resources usage:
+     *
+     * <pre>{@code
+     * try (var batch = manager.openBatch()) {
+     *     manager.createResourceWithWait(configMap);
+     *     manager.createResourceWithWait(deployment);
+     * }
+     * }</pre>
+     *
+     * @return an {@link AutoCloseable} that ends the batch
+     */
+    public AutoCloseable openBatch() {
+        startBatch();
+        return this::endBatch;
+    }
+
+    /**
+     * Flushes any open explicit batch on this thread: if items were collected
+     * (e.g. resources already created on the cluster), they are pushed to the
+     * deque so that {@code deleteResources()} will still clean them up.
+     * This is a safety net for lifecycle callbacks (e.g. afterEach) to ensure
+     * a leaked batch from a failed test does not leak resources on the cluster.
+     */
+    public void clearCurrentBatch() {
+        List<ResourceItem<?>> items = CURRENT_BATCH.get();
+        CURRENT_BATCH.remove();
+        if (items != null && !items.isEmpty()) {
+            pushBatchToDeque(new ResourceBatch(items));
+        }
     }
 
     /* ─────────────────────────  RESOURCE I/O HELPERS  ─────────────────────── */
@@ -480,10 +571,17 @@ public final class KubeResourceManager {
         LOGGER.atLevel(logLevel).log("Printing all managed resources across all contexts");
         STORED_RESOURCES.forEach((ctxId, byTest) -> {
             LOGGER.atLevel(logLevel).log("Context [{}]", ctxId);
-            byTest.forEach((test, stack) -> {
+            byTest.forEach((test, batches) -> {
                 LOGGER.atLevel(logLevel).log("  Test: {}", test);
-                stack.forEach(item -> Optional.ofNullable(item.resource())
-                    .ifPresent(r -> LoggerUtils.logResource("Managed resource:", logLevel, r)));
+                int batchIndex = 0;
+                for (ResourceBatch batch : batches) {
+                    LOGGER.atLevel(logLevel).log("    Batch #{} ({} items)", batchIndex, batch.size());
+                    for (ResourceItem<?> item : batch.items()) {
+                        Optional.ofNullable(item.resource())
+                            .ifPresent(r -> LoggerUtils.logResource("Managed resource:", logLevel, r));
+                    }
+                    batchIndex++;
+                }
             });
         });
     }
@@ -499,9 +597,17 @@ public final class KubeResourceManager {
         LOGGER.atLevel(logLevel).log("Resources in [{}]/{}", ctxId, test);
         Optional.ofNullable(STORED_RESOURCES.get(ctxId))
             .map(m -> m.get(test))
-            .ifPresent(stack -> stack.forEach(i ->
-                Optional.ofNullable(i.resource()).ifPresent(r ->
-                    LoggerUtils.logResource("Managed resource:", logLevel, r))));
+            .ifPresent(batches -> {
+                int batchIndex = 0;
+                for (ResourceBatch batch : batches) {
+                    LOGGER.atLevel(logLevel).log("  Batch #{} ({} items)", batchIndex, batch.size());
+                    for (ResourceItem<?> item : batch.items()) {
+                        Optional.ofNullable(item.resource()).ifPresent(r ->
+                            LoggerUtils.logResource("Managed resource:", logLevel, r));
+                    }
+                    batchIndex++;
+                }
+            });
     }
 
     /**
@@ -513,11 +619,13 @@ public final class KubeResourceManager {
         String test = getTestContext().getDisplayName();
         return Optional.ofNullable(STORED_RESOURCES.get(this.contextId))
             .map(m -> m.get(test))
-            .map(stack -> {
+            .map(batches -> {
                 List<HasMetadata> resources = new ArrayList<>();
-                for (ResourceItem<?> item : stack) {
-                    if (item.resource() != null) {
-                        resources.add(item.resource());
+                for (ResourceBatch batch : batches) {
+                    for (ResourceItem<?> item : batch.items()) {
+                        if (item.resource() != null) {
+                            resources.add(item.resource());
+                        }
                     }
                 }
                 return Collections.unmodifiableList(resources);
@@ -607,15 +715,31 @@ public final class KubeResourceManager {
     @SafeVarargs
     private <T extends HasMetadata> void createOrUpdateResource(
         boolean async, boolean waitReady, boolean allowUpdate, T... resources) {
-        List<CompletableFuture<Void>> promises = new ArrayList<>();
 
+        boolean explicitBatchOpen = CURRENT_BATCH.get() != null;
+        List<ResourceItem<?>> implicitBatchItems = new ArrayList<>();
+
+        // Phase 1: Register all items for cleanup BEFORE starting creation.
+        // This ensures partially-created resources are still tracked for deletion.
+        for (T resource : resources) {
+            ResourceItem<T> item = new ResourceItem<>(() -> deleteResourceWithWait(resource), resource);
+            if (explicitBatchOpen) {
+                CURRENT_BATCH.get().add(item);
+            } else {
+                implicitBatchItems.add(item);
+            }
+        }
+        if (!explicitBatchOpen && !implicitBatchItems.isEmpty()) {
+            pushBatchToDeque(new ResourceBatch(implicitBatchItems));
+        }
+
+        // Phase 2: Create/update resources and wait for readiness.
+        List<CompletableFuture<Void>> promises = new ArrayList<>();
         for (T resource : resources) {
             ResourceType<T> type = findResourceType(resource);
-            pushToStack(resource);
             if (globalStoreYamlPath != null) {
                 writeResourceAsYaml(resource);
             }
-
             if (type == null) {
                 promises.add(createOrUpdateResource(async, waitReady, allowUpdate, resource));
             } else {
@@ -1027,67 +1151,34 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Deletes all stored resources.
-     * The method continues deleting remaining resources even if individual deletions fail.
-     * After all resources are attempted, a composite exception is thrown if any deletions failed.
+     * Deletes all stored resources in batch-LIFO order.
+     * Batches are processed in reverse creation order (last batch first).
+     * When {@code async} is true, all items within a batch are deleted concurrently,
+     * but the method waits for the batch to finish before moving to the next one.
+     * When {@code async} is false, items are deleted sequentially within each batch.
      *
-     * @param async sets async or sequential deletion
+     * @param async sets async or sequential deletion within each batch
      */
     public void deleteResources(boolean async) {
         String ctxId = this.contextId;
         String testName = getTestContext().getDisplayName();
-        Map<String, Stack<ResourceItem<?>>> byTest = STORED_RESOURCES.get(ctxId);
+        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(ctxId);
         if (byTest == null || byTest.get(testName) == null || byTest.get(testName).isEmpty()) {
             LOGGER.info("No resources to delete for [{}]/{}", ctxId, testName);
             return;
         }
         LoggerUtils.logSeparator();
         LOGGER.info("Deleting all resources for [{}]/{}", ctxId, testName);
-        Stack<ResourceItem<?>> stack = byTest.get(testName);
-        List<CompletableFuture<Void>> waiters = new ArrayList<>();
+        Deque<ResourceBatch> batches = byTest.get(testName);
         List<Exception> errors = new ArrayList<>();
         try {
-            while (!stack.isEmpty()) {
-                ResourceItem<?> item = stack.pop();
-                CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                    Semaphore sem = OPERATION_SEMAPHORE.get();
-                    sem.acquireUninterruptibly();
-                    try {
-                        item.throwableRunner().run();
-                    } catch (Exception e) {
-                        throw new RuntimeException(e.getMessage(), e);
-                    } finally {
-                        sem.release();
-                    }
-                }, EXECUTOR);
-                if (async) {
-                    waiters.add(cf);
-                } else {
-                    String resNs = item.resource() != null
-                        && item.resource().getMetadata() != null
-                        ? item.resource().getMetadata().getNamespace() : null;
-                    String resName = item.resource() != null
-                        && item.resource().getMetadata() != null
-                        ? item.resource().getMetadata().getName() : null;
-                    try {
-                        cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
-                    } catch (TimeoutException e) {
-                        LOGGER.error("Timeout waiting for deletion of resource {}/{}",
-                            resNs, resName, e);
-                        errors.add(e);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        LOGGER.error("Interrupted during deletion of resource {}/{}",
-                            resNs, resName, e);
-                        errors.add(e);
-                    } catch (ExecutionException e) {
-                        LOGGER.error("Exception during deletion of resource {}/{}",
-                            resNs, resName, e);
-                        errors.add(e);
-                    }
-                }
+            int batchIndex = batches.size();
+            while (!batches.isEmpty()) {
+                ResourceBatch batch = batches.pollLast();
+                batchIndex--;
+                LOGGER.info("Deleting batch #{} ({} items)", batchIndex, batch.size());
+                deleteBatch(batch, async, errors);
             }
-            collectAsyncErrors(waiters, errors);
         } finally {
             byTest.remove(testName);
             if (byTest.isEmpty()) {
@@ -1101,6 +1192,57 @@ public final class KubeResourceManager {
             errors.forEach(composite::addSuppressed);
             throw composite;
         }
+    }
+
+    /**
+     * Deletes all items within a single batch.
+     *
+     * @param batch the batch to delete
+     * @param async if true, items are deleted concurrently; if false, sequentially
+     * @param errors list to collect any deletion errors
+     */
+    private void deleteBatch(ResourceBatch batch, boolean async, List<Exception> errors) {
+        List<CompletableFuture<Void>> waiters = new ArrayList<>();
+        for (ResourceItem<?> item : batch.items()) {
+            CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
+                Semaphore sem = OPERATION_SEMAPHORE.get();
+                sem.acquireUninterruptibly();
+                try {
+                    item.throwableRunner().run();
+                } catch (Exception e) {
+                    throw new RuntimeException(e.getMessage(), e);
+                } finally {
+                    sem.release();
+                }
+            }, EXECUTOR);
+            if (async) {
+                waiters.add(cf);
+            } else {
+                String resNs = item.resource() != null
+                    && item.resource().getMetadata() != null
+                    ? item.resource().getMetadata().getNamespace() : null;
+                String resName = item.resource() != null
+                    && item.resource().getMetadata() != null
+                    ? item.resource().getMetadata().getName() : null;
+                try {
+                    cf.get(KubeTestConstants.GLOBAL_TIMEOUT, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    LOGGER.error("Timeout waiting for deletion of resource {}/{}",
+                        resNs, resName, e);
+                    errors.add(e);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    LOGGER.error("Interrupted during deletion of resource {}/{}",
+                        resNs, resName, e);
+                    errors.add(e);
+                } catch (ExecutionException e) {
+                    LOGGER.error("Exception during deletion of resource {}/{}",
+                        resNs, resName, e);
+                    errors.add(e);
+                }
+            }
+        }
+        collectAsyncErrors(waiters, errors);
     }
 
     /**

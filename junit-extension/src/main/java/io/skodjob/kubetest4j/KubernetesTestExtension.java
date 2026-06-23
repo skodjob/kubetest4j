@@ -224,6 +224,15 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
             state = "FAILED";
         }
 
+        // Always flush leaked explicit batches so they don't contaminate the next test.
+        // This must run even with MANUAL cleanup — a leaked CURRENT_BATCH would cause
+        // the next test's beforeEach (namespace creation, DI) to add items to the wrong batch.
+        KubeResourceManager resourceManager = contextStoreHelper.getResourceManager(context);
+        if (resourceManager != null) {
+            resourceManager.setTestContext(context);
+            resourceManager.clearCurrentBatch();
+        }
+
         // Collect logs if configured for AFTER_EACH (successful completion)
         if ("SUCCEEDED".equals(state) && testConfig.collectLogs() &&
             testConfig.logCollectionStrategy() == LogCollectionStrategy.AFTER_EACH) {
@@ -232,7 +241,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         }
 
         // Handle cleanup by delegating to ResourceManager logic
-        // KRM's LIFO stack ensures correct deletion order:
+        // KRM's batch-LIFO ordering ensures correct deletion order:
         // resources inside namespaces are deleted before the namespaces themselves
         handleAutomaticCleanup(context, testConfig);
 
@@ -392,6 +401,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         if (testConfig.cleanup() == CleanupStrategy.AUTOMATIC) {
             KubeResourceManager resourceManager = contextStoreHelper.getResourceManager(context);
             resourceManager.setTestContext(context);
+            resourceManager.clearCurrentBatch();
             resourceManager.deleteResources(true);
         }
     }

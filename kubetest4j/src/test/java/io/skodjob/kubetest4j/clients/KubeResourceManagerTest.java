@@ -43,8 +43,6 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Stack;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -239,9 +237,10 @@ class KubeResourceManagerTest {
         System.out.println(testAppender.getLogEvents());
         List<LogEvent> events = testAppender.getLogEvents();
 
-        assertEquals(3, events.size());
-        assertEquals("Managed resource: Namespace/test-ns", events.get(1).getMessage().getFormattedMessage());
-        assertEquals("Managed resource: ServiceAccount/test-sa", events.get(2).getMessage().getFormattedMessage());
+        // header + (batch header + resource) * 2 = 5 events
+        assertEquals(5, events.size());
+        assertEquals("Managed resource: Namespace/test-ns", events.get(2).getMessage().getFormattedMessage());
+        assertEquals("Managed resource: ServiceAccount/test-sa", events.get(4).getMessage().getFormattedMessage());
         assertEquals(Level.INFO, events.get(0).getLevel());
 
         testAppender.clean();
@@ -250,9 +249,10 @@ class KubeResourceManagerTest {
         KubeResourceManager.get().printAllResources(org.slf4j.event.Level.DEBUG);
         events = testAppender.getLogEvents();
 
-        assertEquals(5, events.size());
-        assertEquals("Managed resource: Namespace/test-ns", events.get(3).getMessage().getFormattedMessage());
-        assertEquals("Managed resource: ServiceAccount/test-sa", events.get(4).getMessage().getFormattedMessage());
+        // header + context + test + (batch header + resource) * 2 = 7 events
+        assertEquals(7, events.size());
+        assertEquals("Managed resource: Namespace/test-ns", events.get(4).getMessage().getFormattedMessage());
+        assertEquals("Managed resource: ServiceAccount/test-sa", events.get(6).getMessage().getFormattedMessage());
         assertEquals(Level.DEBUG, events.get(0).getLevel());
     }
 
@@ -559,36 +559,19 @@ class KubeResourceManagerTest {
             // Mock delete action
         }, ns);
 
-        // Get initial stack size
-        Field storedResourcesField = KubeResourceManager.class.getDeclaredField("STORED_RESOURCES");
-        storedResourcesField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Stack<ResourceItem<?>>>> storedResources =
-            (Map<String, Map<String, Stack<ResourceItem<?>>>>) storedResourcesField.get(null);
-
-        // Get the current cluster context using reflection
-        Field contextField = KubeResourceManager.class.getDeclaredField("CURRENT_CLUSTER_CONTEXT");
-        contextField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        ThreadLocal<String> clusterContextTL = (ThreadLocal<String>) contextField.get(null);
-        String clusterContext = clusterContextTL.get();
-        String testName = KubeResourceManager.get().getTestContext().getDisplayName();
-
-        int initialSize = storedResources
-            .computeIfAbsent(clusterContext, c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(testName, t -> new Stack<>())
-            .size();
+        int initialSize = KubeResourceManager.get().getCurrentResources().size();
 
         // Test pushToStack method
         KubeResourceManager.get().pushToStack(resourceItem);
 
-        // Verify the item was added to the stack
-        int newSize = storedResources.get(clusterContext).get(testName).size();
-        assertEquals(initialSize + 1, newSize, "Stack size should increase by 1");
+        // Verify the item was added
+        int newSize = KubeResourceManager.get().getCurrentResources().size();
+        assertEquals(initialSize + 1, newSize, "Resource count should increase by 1");
 
         // Verify the correct item was added
-        ResourceItem<?> addedItem = storedResources.get(clusterContext).get(testName).peek();
-        assertEquals(resourceItem, addedItem, "The added item should match the original");
+        List<HasMetadata> resources = KubeResourceManager.get().getCurrentResources();
+        HasMetadata addedResource = resources.get(resources.size() - 1);
+        assertEquals(ns, addedResource, "The added resource should match the original");
     }
 
 }

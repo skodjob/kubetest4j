@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.Mockito;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -363,5 +365,209 @@ public class KubeResourceManagerMockTest {
             blockRunner.countDown();
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void testBatchLIFODeletionOrder() {
+        List<String> deletionOrder = Collections.synchronizedList(new ArrayList<>());
+
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata()
+            .withName("batch1-ns").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata()
+            .withName("batch2-ns").endMetadata().build();
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("batch1-ns"), ns1));
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("batch2-ns"), ns2));
+
+        kubeResourceManager.deleteResources(false);
+
+        assertEquals(2, deletionOrder.size(), "Both items should be deleted");
+        assertEquals("batch2-ns", deletionOrder.get(0),
+            "Last pushed batch should be deleted first (LIFO)");
+        assertEquals("batch1-ns", deletionOrder.get(1),
+            "First pushed batch should be deleted last (LIFO)");
+    }
+
+    @Test
+    void testExplicitBatchGroupsResources() {
+        List<String> deletionOrder = Collections.synchronizedList(new ArrayList<>());
+
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("infra-ns").endMetadata().build();
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("infra-ns"), ns));
+
+        kubeResourceManager.startBatch();
+        Namespace app1 = new NamespaceBuilder().withNewMetadata()
+            .withName("app-1").endMetadata().build();
+        Namespace app2 = new NamespaceBuilder().withNewMetadata()
+            .withName("app-2").endMetadata().build();
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("app-1"), app1));
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("app-2"), app2));
+        kubeResourceManager.endBatch();
+
+        kubeResourceManager.deleteResources(false);
+
+        assertEquals(3, deletionOrder.size(), "All items should be deleted");
+        // The explicit batch (app-1, app-2) was pushed last, so deleted first
+        // Within the batch, sequential deletion preserves order
+        assertTrue(deletionOrder.indexOf("app-1") < deletionOrder.indexOf("infra-ns"),
+            "Explicit batch items should be deleted before earlier single-item batch");
+        assertTrue(deletionOrder.indexOf("app-2") < deletionOrder.indexOf("infra-ns"),
+            "Explicit batch items should be deleted before earlier single-item batch");
+    }
+
+    @Test
+    void testOpenBatchAutoCloseable() throws Exception {
+        List<String> deletionOrder = Collections.synchronizedList(new ArrayList<>());
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("before-batch"),
+            new NamespaceBuilder().withNewMetadata().withName("before").endMetadata().build()));
+
+        try (AutoCloseable ignored = kubeResourceManager.openBatch()) {
+            kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+                deletionOrder.add("in-batch-1"),
+                new NamespaceBuilder().withNewMetadata().withName("in1").endMetadata().build()));
+            kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+                deletionOrder.add("in-batch-2"),
+                new NamespaceBuilder().withNewMetadata().withName("in2").endMetadata().build()));
+        }
+
+        kubeResourceManager.deleteResources(false);
+
+        assertEquals(3, deletionOrder.size());
+        assertTrue(deletionOrder.indexOf("in-batch-1") < deletionOrder.indexOf("before-batch"),
+            "Batch items should be deleted before items pushed earlier");
+        assertTrue(deletionOrder.indexOf("in-batch-2") < deletionOrder.indexOf("before-batch"),
+            "Batch items should be deleted before items pushed earlier");
+    }
+
+    @Test
+    void testStartBatchThrowsWhenAlreadyOpen() {
+        kubeResourceManager.startBatch();
+        try {
+            assertThrows(IllegalStateException.class,
+                () -> kubeResourceManager.startBatch(),
+                "Should throw when batch is already open");
+        } finally {
+            kubeResourceManager.endBatch();
+        }
+    }
+
+    @Test
+    void testEndBatchThrowsWhenNoneOpen() {
+        assertThrows(IllegalStateException.class,
+            () -> kubeResourceManager.endBatch(),
+            "Should throw when no batch is open");
+    }
+
+    @Test
+    void testAsyncBatchDeletionDeletesWithinBatchConcurrently() {
+        AtomicInteger concurrentCount = new AtomicInteger(0);
+        AtomicInteger maxConcurrent = new AtomicInteger(0);
+
+        kubeResourceManager.startBatch();
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata()
+            .withName("concurrent-1").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata()
+            .withName("concurrent-2").endMetadata().build();
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
+            int c = concurrentCount.incrementAndGet();
+            maxConcurrent.updateAndGet(curr -> Math.max(curr, c));
+            Thread.sleep(200);
+            concurrentCount.decrementAndGet();
+        }, ns1));
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
+            int c = concurrentCount.incrementAndGet();
+            maxConcurrent.updateAndGet(curr -> Math.max(curr, c));
+            Thread.sleep(200);
+            concurrentCount.decrementAndGet();
+        }, ns2));
+        kubeResourceManager.endBatch();
+
+        kubeResourceManager.deleteResources(true);
+
+        assertEquals(2, maxConcurrent.get(),
+            "Both items in the batch should run concurrently");
+    }
+
+    @Test
+    void testGetCurrentResourcesFlattensBatches() {
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata()
+            .withName("res-1").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata()
+            .withName("res-2").endMetadata().build();
+        Namespace ns3 = new NamespaceBuilder().withNewMetadata()
+            .withName("res-3").endMetadata().build();
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, ns1));
+
+        kubeResourceManager.startBatch();
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, ns2));
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, ns3));
+        kubeResourceManager.endBatch();
+
+        List<HasMetadata> resources = kubeResourceManager.getCurrentResources();
+        assertEquals(3, resources.size(), "Should flatten all batches into one list");
+
+        kubeResourceManager.deleteResources(false);
+    }
+
+    @Test
+    void testClearCurrentBatchFlushesToDeque() {
+        List<String> deletionOrder = Collections.synchronizedList(new ArrayList<>());
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("before"),
+            new NamespaceBuilder().withNewMetadata().withName("before").endMetadata().build()));
+
+        // Simulate a leaked batch (startBatch without endBatch)
+        kubeResourceManager.startBatch();
+        kubeResourceManager.pushToStack(new ResourceItem<>(() ->
+            deletionOrder.add("leaked"),
+            new NamespaceBuilder().withNewMetadata().withName("leaked").endMetadata().build()));
+        // endBatch() NOT called — simulates test failure
+
+        // clearCurrentBatch should flush items to deque, not discard
+        kubeResourceManager.clearCurrentBatch();
+
+        // deleteResources should still find and delete the leaked item
+        kubeResourceManager.deleteResources(false);
+
+        assertEquals(2, deletionOrder.size(), "Both items should be deleted");
+        assertTrue(deletionOrder.contains("leaked"),
+            "Leaked batch items should be flushed and deleted");
+    }
+
+    @Test
+    void testClearCurrentBatchNoopWhenNoBatch() {
+        // Should not throw when no batch is open
+        assertDoesNotThrow(() -> kubeResourceManager.clearCurrentBatch());
+    }
+
+    @Test
+    void testRemoveFromStackAcrossBatches() {
+        Namespace ns1 = new NamespaceBuilder().withNewMetadata()
+            .withName("rm-1").endMetadata().build();
+        Namespace ns2 = new NamespaceBuilder().withNewMetadata()
+            .withName("rm-2").endMetadata().build();
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, ns1));
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, ns2));
+
+        kubeResourceManager.removeFromStack(ns1);
+
+        List<HasMetadata> resources = kubeResourceManager.getCurrentResources();
+        assertEquals(1, resources.size());
+        assertEquals("rm-2", resources.get(0).getMetadata().getName());
+
+        kubeResourceManager.deleteResources(false);
     }
 }
