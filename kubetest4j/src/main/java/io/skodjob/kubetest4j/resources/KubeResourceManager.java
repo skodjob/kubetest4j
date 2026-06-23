@@ -126,7 +126,8 @@ public final class KubeResourceManager {
     private static final ThreadLocal<ExtensionContext> TEST_CONTEXT = new ThreadLocal<>();
     private static final Map<String, Map<String, Deque<ResourceBatch>>> STORED_RESOURCES =
         new ConcurrentHashMap<>();
-    private static final ThreadLocal<List<ResourceItem<?>>> CURRENT_BATCH = new ThreadLocal<>();
+    private static final ThreadLocal<Map<String, List<ResourceItem<?>>>> CURRENT_BATCH =
+        new ThreadLocal<>();
 
     // Lock used during store of resources that are being created by KubeResourceManager
     private static final Object CREATION_LOCK = new Object();
@@ -405,7 +406,7 @@ public final class KubeResourceManager {
      */
     public <T extends HasMetadata> void pushToStack(T resource) {
         ResourceItem<T> item = new ResourceItem<>(() -> deleteResourceWithWait(resource), resource);
-        List<ResourceItem<?>> batch = CURRENT_BATCH.get();
+        List<ResourceItem<?>> batch = getOpenBatch();
         if (batch != null) {
             batch.add(item);
         } else {
@@ -419,12 +420,17 @@ public final class KubeResourceManager {
      * @param item The resource item to push.
      */
     public void pushToStack(ResourceItem<?> item) {
-        List<ResourceItem<?>> batch = CURRENT_BATCH.get();
+        List<ResourceItem<?>> batch = getOpenBatch();
         if (batch != null) {
             batch.add(item);
         } else {
             pushBatchToDeque(new ResourceBatch(item));
         }
+    }
+
+    private List<ResourceItem<?>> getOpenBatch() {
+        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
+        return map != null ? map.get(this.contextId) : null;
     }
 
     /**
@@ -479,10 +485,17 @@ public final class KubeResourceManager {
      * @throws IllegalStateException if a batch is already open on this thread
      */
     public void startBatch() {
-        if (CURRENT_BATCH.get() != null) {
-            throw new IllegalStateException("A batch is already open on this thread");
+        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
+        if (map != null && map.containsKey(this.contextId)) {
+            throw new IllegalStateException(
+                "A batch is already open on this thread for context "
+                    + this.contextId);
         }
-        CURRENT_BATCH.set(new ArrayList<>());
+        if (map == null) {
+            map = new ConcurrentHashMap<>();
+            CURRENT_BATCH.set(map);
+        }
+        map.put(this.contextId, new ArrayList<>());
     }
 
     /**
@@ -492,11 +505,17 @@ public final class KubeResourceManager {
      * @throws IllegalStateException if no batch is open on this thread
      */
     public void endBatch() {
-        List<ResourceItem<?>> items = CURRENT_BATCH.get();
+        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
+        List<ResourceItem<?>> items = map != null
+            ? map.remove(this.contextId) : null;
         if (items == null) {
-            throw new IllegalStateException("No batch is open on this thread");
+            throw new IllegalStateException(
+                "No batch is open on this thread for context "
+                    + this.contextId);
         }
-        CURRENT_BATCH.remove();
+        if (map != null && map.isEmpty()) {
+            CURRENT_BATCH.remove();
+        }
         if (!items.isEmpty()) {
             pushBatchToDeque(new ResourceBatch(items));
         }
@@ -528,8 +547,14 @@ public final class KubeResourceManager {
      * a leaked batch from a failed test does not leak resources on the cluster.
      */
     public void clearCurrentBatch() {
-        List<ResourceItem<?>> items = CURRENT_BATCH.get();
-        CURRENT_BATCH.remove();
+        Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
+        if (map == null) {
+            return;
+        }
+        List<ResourceItem<?>> items = map.remove(this.contextId);
+        if (map.isEmpty()) {
+            CURRENT_BATCH.remove();
+        }
         if (items != null && !items.isEmpty()) {
             pushBatchToDeque(new ResourceBatch(items));
         }
@@ -716,20 +741,20 @@ public final class KubeResourceManager {
     private <T extends HasMetadata> void createOrUpdateResource(
         boolean async, boolean waitReady, boolean allowUpdate, T... resources) {
 
-        boolean explicitBatchOpen = CURRENT_BATCH.get() != null;
+        List<ResourceItem<?>> openBatch = getOpenBatch();
         List<ResourceItem<?>> implicitBatchItems = new ArrayList<>();
 
         // Phase 1: Register all items for cleanup BEFORE starting creation.
         // This ensures partially-created resources are still tracked for deletion.
         for (T resource : resources) {
             ResourceItem<T> item = new ResourceItem<>(() -> deleteResourceWithWait(resource), resource);
-            if (explicitBatchOpen) {
-                CURRENT_BATCH.get().add(item);
+            if (openBatch != null) {
+                openBatch.add(item);
             } else {
                 implicitBatchItems.add(item);
             }
         }
-        if (!explicitBatchOpen && !implicitBatchItems.isEmpty()) {
+        if (openBatch == null && !implicitBatchItems.isEmpty()) {
             pushBatchToDeque(new ResourceBatch(implicitBatchItems));
         }
 

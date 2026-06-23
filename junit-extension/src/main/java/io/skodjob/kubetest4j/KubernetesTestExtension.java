@@ -400,6 +400,11 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     private void handleAutomaticCleanup(ExtensionContext context, TestConfig testConfig) {
         if (testConfig.cleanup() == CleanupStrategy.AUTOMATIC) {
             KubeResourceManager resourceManager = contextStoreHelper.getResourceManager(context);
+            if (resourceManager == null) {
+                LOGGER.debug("No ResourceManager found for context {}; skipping cleanup",
+                    context.getDisplayName());
+                return;
+            }
             resourceManager.setTestContext(context);
             resourceManager.clearCurrentBatch();
             resourceManager.deleteResources(true);

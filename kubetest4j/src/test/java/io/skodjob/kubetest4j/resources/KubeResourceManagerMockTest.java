@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -472,6 +473,7 @@ public class KubeResourceManagerMockTest {
     void testAsyncBatchDeletionDeletesWithinBatchConcurrently() {
         AtomicInteger concurrentCount = new AtomicInteger(0);
         AtomicInteger maxConcurrent = new AtomicInteger(0);
+        CyclicBarrier barrier = new CyclicBarrier(2);
 
         kubeResourceManager.startBatch();
         Namespace ns1 = new NamespaceBuilder().withNewMetadata()
@@ -481,13 +483,13 @@ public class KubeResourceManagerMockTest {
         kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
             int c = concurrentCount.incrementAndGet();
             maxConcurrent.updateAndGet(curr -> Math.max(curr, c));
-            Thread.sleep(200);
+            barrier.await(5, java.util.concurrent.TimeUnit.SECONDS);
             concurrentCount.decrementAndGet();
         }, ns1));
         kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
             int c = concurrentCount.incrementAndGet();
             maxConcurrent.updateAndGet(curr -> Math.max(curr, c));
-            Thread.sleep(200);
+            barrier.await(5, java.util.concurrent.TimeUnit.SECONDS);
             concurrentCount.decrementAndGet();
         }, ns2));
         kubeResourceManager.endBatch();
