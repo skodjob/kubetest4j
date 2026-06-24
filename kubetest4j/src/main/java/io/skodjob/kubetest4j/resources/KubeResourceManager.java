@@ -70,8 +70,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * <p>Implementation is split across package-private helpers:
  * <ul>
  *   <li>{@link ResourceTrackerService} — batch/stack tracking</li>
- *   <li>{@link ResourceCreateService} — create/update execution</li>
- *   <li>{@link ResourceDeleteService} — delete/replace/cleanup</li>
+ *   <li>{@link ResourceCreateService} — create execution</li>
+ *   <li>{@link ResourceUpdateService} — update/replace execution</li>
+ *   <li>{@link ResourceDeleteService} — delete/cleanup</li>
  * </ul>
  */
 public final class KubeResourceManager {
@@ -115,6 +116,7 @@ public final class KubeResourceManager {
     // Extracted helpers (per-instance, created lazily to allow spy wiring)
     private ResourceTrackerService tracker;
     private ResourceCreateService createService;
+    private ResourceUpdateService updateService;
     private ResourceDeleteService deleteService;
 
     private KubeResourceManager(String contextId) {
@@ -179,11 +181,15 @@ public final class KubeResourceManager {
     private <K extends KubeCmdClient<K>> ClusterContext<K> clusterContext(String id) {
         return (ClusterContext<K>) clientCache.computeIfAbsent(id, cid -> {
             TestEnvironmentVariables.ClusterConfig c = CLUSTER_CONFIGS.get(cid);
+            if (c == null) {
+                throw new IllegalStateException(
+                    "Credentials missing for context " + cid);
+            }
 
             KubeClient kube;
-            if (c != null && c.kubeconfigPath() != null) {
+            if (c.kubeconfigPath() != null) {
                 kube = new KubeClient(c.kubeconfigPath());
-            } else if (c != null && c.url() != null && c.token() != null) {
+            } else if (c.url() != null && c.token() != null) {
                 kube = KubeClient.fromUrlAndToken(c.url(), c.token());
             } else {
                 kube = new KubeClient();
@@ -232,11 +238,6 @@ public final class KubeResourceManager {
      */
     public void setStoreYamlPath(String path) {
         globalStoreYamlPath = path;
-        if (path != null) {
-            LOGGER.info("Resource YAML storage enabled at: {}", path);
-        } else {
-            LOGGER.info("Resource YAML storage disabled");
-        }
     }
 
     /**
@@ -363,7 +364,7 @@ public final class KubeResourceManager {
 
     /* ─────────────────  PACKAGE-PRIVATE ACCESSORS  ─────────── */
 
-    ResourceTrackerService tracker() {
+    synchronized ResourceTrackerService tracker() {
         if (tracker == null) {
             tracker = new ResourceTrackerService(contextId, this::getTestContext,
                 r -> new ResourceItem<>(
@@ -372,14 +373,21 @@ public final class KubeResourceManager {
         return tracker;
     }
 
-    private ResourceCreateService createService() {
+    private synchronized ResourceCreateService createService() {
         if (createService == null) {
             createService = new ResourceCreateService(this);
         }
         return createService;
     }
 
-    private ResourceDeleteService deleteService() {
+    private synchronized ResourceUpdateService updateService() {
+        if (updateService == null) {
+            updateService = new ResourceUpdateService(this);
+        }
+        return updateService;
+    }
+
+    private synchronized ResourceDeleteService deleteService() {
         if (deleteService == null) {
             deleteService = new ResourceDeleteService(this);
         }
@@ -641,7 +649,7 @@ public final class KubeResourceManager {
      */
     @SafeVarargs
     public final <T extends HasMetadata> void updateResource(T... resources) {
-        deleteService().updateResource(resources);
+        updateService().updateResource(resources);
     }
 
     /**
@@ -653,7 +661,7 @@ public final class KubeResourceManager {
      */
     public <T extends HasMetadata> void replaceResourceWithRetries(
         T resource, Consumer<T> editor) {
-        replaceResourceWithRetries(resource, editor, 3);
+        updateService().replaceResourceWithRetries(resource, editor);
     }
 
     /**
@@ -666,25 +674,7 @@ public final class KubeResourceManager {
      */
     public <T extends HasMetadata> void replaceResourceWithRetries(
         T resource, Consumer<T> editor, int retries) {
-        int attempt = 0;
-        while (true) {
-            try {
-                replaceResource(resource, editor);
-                return;
-            } catch (java.util.concurrent.CompletionException ce) {
-                Throwable cause = ce.getCause();
-                if (ResourceDeleteService.isNotConflict(cause)
-                    || ++attempt >= retries) {
-                    throw (cause instanceof RuntimeException re)
-                        ? re : new RuntimeException(cause);
-                }
-            } catch (io.fabric8.kubernetes.client.KubernetesClientException kce) {
-                if (ResourceDeleteService.isNotConflict(kce)
-                    || ++attempt >= retries) {
-                    throw kce;
-                }
-            }
-        }
+        updateService().replaceResourceWithRetries(resource, editor, retries);
     }
 
     /**
@@ -696,7 +686,7 @@ public final class KubeResourceManager {
      */
     public <T extends HasMetadata> void replaceResource(
         T resource, Consumer<T> editor) {
-        deleteService().replaceResource(resource, editor);
+        updateService().replaceResource(resource, editor);
     }
 
     /* ─────────────────  WAIT CONDITIONS  ──────────────────── */
