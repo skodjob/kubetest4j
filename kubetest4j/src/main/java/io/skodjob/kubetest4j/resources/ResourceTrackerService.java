@@ -39,19 +39,24 @@ final class ResourceTrackerService {
     private static final ThreadLocal<Map<String, List<ResourceItem<?>>>> CURRENT_BATCH =
         new ThreadLocal<>();
 
-    private final String contextId;
+    static void reset() {
+        STORED_RESOURCES.clear();
+        CURRENT_BATCH.remove();
+    }
+
+    private final KubeResourceManager manager;
     private final Supplier<ExtensionContext> testContextSupplier;
     private final Function<HasMetadata, ResourceItem<?>> itemFactory;
 
     /**
-     * @param contextId           cluster context id for this tracker
+     * @param manager             the owning KubeResourceManager instance
      * @param testContextSupplier supplies the current JUnit ExtensionContext
      * @param itemFactory         creates a ResourceItem (with delete lambda) from a resource
      */
-    ResourceTrackerService(String contextId,
+    ResourceTrackerService(KubeResourceManager manager,
                     Supplier<ExtensionContext> testContextSupplier,
                     Function<HasMetadata, ResourceItem<?>> itemFactory) {
-        this.contextId = contextId;
+        this.manager = manager;
         this.testContextSupplier = testContextSupplier;
         this.itemFactory = itemFactory;
     }
@@ -79,19 +84,19 @@ final class ResourceTrackerService {
 
     private List<ResourceItem<?>> getOpenBatch() {
         Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        return map != null ? map.get(contextId) : null;
+        return map != null ? map.get(manager.activeContextId()) : null;
     }
 
     void pushBatchToDeque(ResourceBatch batch) {
         STORED_RESOURCES
-            .computeIfAbsent(contextId, c -> new ConcurrentHashMap<>())
+            .computeIfAbsent(manager.activeContextId(), c -> new ConcurrentHashMap<>())
             .computeIfAbsent(testContextSupplier.get().getDisplayName(),
                 t -> new ConcurrentLinkedDeque<>())
             .addLast(batch);
     }
 
     <T extends HasMetadata> void removeFromStack(T resource) {
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(contextId);
+        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.activeContextId());
         if (byTest == null) {
             return;
         }
@@ -125,32 +130,32 @@ final class ResourceTrackerService {
         List<ResourceItem<?>> batch = getOpenBatch();
         if (batch == null) {
             throw new IllegalStateException(
-                "No batch is open on this thread for context " + contextId);
+                "No batch is open on this thread for context " + manager.activeContextId());
         }
         batch.add(item);
     }
 
     void startBatch() {
         Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        if (map != null && map.containsKey(contextId)) {
+        if (map != null && map.containsKey(manager.activeContextId())) {
             throw new IllegalStateException(
                 "A batch is already open on this thread for context "
-                    + contextId);
+                    + manager.activeContextId());
         }
         if (map == null) {
             map = new ConcurrentHashMap<>();
             CURRENT_BATCH.set(map);
         }
-        map.put(contextId, new ArrayList<>());
+        map.put(manager.activeContextId(), new ArrayList<>());
     }
 
     void endBatch() {
         Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
-        if (map == null || !map.containsKey(contextId)) {
+        if (map == null || !map.containsKey(manager.activeContextId())) {
             throw new IllegalStateException(
-                "No batch is open on this thread for context " + contextId);
+                "No batch is open on this thread for context " + manager.activeContextId());
         }
-        List<ResourceItem<?>> items = map.remove(contextId);
+        List<ResourceItem<?>> items = map.remove(manager.activeContextId());
         if (map.isEmpty()) {
             CURRENT_BATCH.remove();
         }
@@ -169,7 +174,7 @@ final class ResourceTrackerService {
         if (map == null) {
             return;
         }
-        List<ResourceItem<?>> items = map.remove(contextId);
+        List<ResourceItem<?>> items = map.remove(manager.activeContextId());
         if (map.isEmpty()) {
             CURRENT_BATCH.remove();
         }
@@ -182,7 +187,7 @@ final class ResourceTrackerService {
 
     List<HasMetadata> getCurrentResources() {
         String test = testContextSupplier.get().getDisplayName();
-        return Optional.ofNullable(STORED_RESOURCES.get(contextId))
+        return Optional.ofNullable(STORED_RESOURCES.get(manager.activeContextId()))
             .map(m -> m.get(test))
             .map(batches -> {
                 List<HasMetadata> resources = new ArrayList<>();
@@ -223,8 +228,8 @@ final class ResourceTrackerService {
     void printCurrentResources(Level logLevel) {
         String test = testContextSupplier.get().getDisplayName();
         LOGGER.atLevel(logLevel).log(
-            "Resources in [{}]/{}", contextId, test);
-        Optional.ofNullable(STORED_RESOURCES.get(contextId))
+            "Resources in [{}]/{}", manager.activeContextId(), test);
+        Optional.ofNullable(STORED_RESOURCES.get(manager.activeContextId()))
             .map(m -> m.get(test))
             .ifPresent(batches -> {
                 int batchIndex = 0;
@@ -245,7 +250,7 @@ final class ResourceTrackerService {
 
     Deque<ResourceBatch> getBatches() {
         String testName = testContextSupplier.get().getDisplayName();
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(contextId);
+        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.activeContextId());
         if (byTest == null) {
             return null;
         }
@@ -254,12 +259,9 @@ final class ResourceTrackerService {
 
     void cleanupAfterDelete() {
         String testName = testContextSupplier.get().getDisplayName();
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(contextId);
+        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.activeContextId());
         if (byTest != null) {
             byTest.remove(testName);
-            if (byTest.isEmpty()) {
-                STORED_RESOURCES.remove(contextId);
-            }
         }
     }
 }

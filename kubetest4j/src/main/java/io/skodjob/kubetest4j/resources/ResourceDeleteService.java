@@ -44,6 +44,7 @@ final class ResourceDeleteService {
     final <T extends HasMetadata> void deleteResource(
         boolean async, boolean waitForDeletion, T... resources) {
         List<CompletableFuture<Void>> waiters = new ArrayList<>();
+        List<Exception> errors = new ArrayList<>();
         for (T resource : resources) {
             ResourceType<T> type = manager.findResourceType(resource);
             LoggerUtils.logResource("Deleting", resource);
@@ -79,10 +80,9 @@ final class ResourceDeleteService {
                     resource.getKind(),
                     resource.getMetadata().getName(),
                     e.getMessage(), e);
+                errors.add(e);
             }
         }
-
-        List<Exception> errors = new ArrayList<>();
         collectAsyncErrors(waiters, errors);
         if (!errors.isEmpty()) {
             RuntimeException composite = new RuntimeException(
@@ -118,7 +118,6 @@ final class ResourceDeleteService {
                 deleteBatch(batch, async, errors);
             }
         } finally {
-            tracker.cleanupAfterDelete();
             LoggerUtils.logSeparator();
         }
         if (!errors.isEmpty()) {
@@ -127,6 +126,7 @@ final class ResourceDeleteService {
             errors.forEach(composite::addSuppressed);
             throw composite;
         }
+        tracker.cleanupAfterDelete();
     }
 
     private void deleteBatch(ResourceBatch batch, boolean async,

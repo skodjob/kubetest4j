@@ -145,12 +145,13 @@ class KubeResourceManagerTest {
             .getMetadata().getLabels().get("my-label"));
 
         // Check retries will fail when it reaches the max retries (default 3)
+        // With 3 retries, we need 4 conflicts: 1 initial attempt + 3 retries
         server
             .expect()
             .put()
             .withPath("/api/v1/namespaces/" + namespaceName)
             .andReturn(409, "{\"message\":\"Conflict\"}")
-            .times(3);
+            .times(4);
 
         assertThrows(RuntimeException.class, () -> KubeResourceManager.get().replaceResourceWithRetries(ns,
             resource -> resource.getMetadata().setLabels(Map.of("my-label2", "not-here"))));

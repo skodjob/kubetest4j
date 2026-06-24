@@ -60,8 +60,11 @@ final class ResourceCreateService {
         List<ResourceItem<?>> implicitBatchItems = new ArrayList<>();
 
         for (T resource : resources) {
+            KubeResourceManager activeManager = KubeResourceManager
+                .getForContext(manager.activeContextId());
             ResourceItem<T> item = new ResourceItem<>(
-                () -> manager.deleteResourceWithWait(resource), resource);
+                () -> activeManager.deleteResourceWithWait(resource),
+                resource);
             if (explicitBatchOpen) {
                 tracker.addToCurrentBatch(item);
             } else {

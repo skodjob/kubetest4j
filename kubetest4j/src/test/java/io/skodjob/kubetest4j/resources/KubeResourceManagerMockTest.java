@@ -35,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -75,6 +74,7 @@ public class KubeResourceManagerMockTest {
 
         // Reset shared static state that may leak from other tests
         kubeResourceManager.setStoreYamlPath(null);
+        kubeResourceManager.setResourceTypes();
     }
 
     @Test
@@ -297,11 +297,12 @@ public class KubeResourceManagerMockTest {
             .withName("replace-ns").endMetadata().build();
         Consumer<Namespace> editor = n -> { };
 
-        doThrow(new CompletionException(new RuntimeException("wrapped error")))
-            .when(kubeResourceManager).replaceResource(any(), any());
+        when(namespaceResource.get())
+            .thenThrow(new CompletionException(
+                new RuntimeException("wrapped error")));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> kubeResourceManager.replaceResourceWithRetries(ns, editor, 1),
+            () -> kubeResourceManager.replaceResourceWithRetries(ns, editor, 0),
             "Should throw the unwrapped cause");
         assertEquals("wrapped error", ex.getMessage(),
             "Should unwrap CompletionException cause");

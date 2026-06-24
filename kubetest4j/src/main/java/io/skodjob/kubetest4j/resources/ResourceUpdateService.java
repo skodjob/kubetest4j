@@ -53,16 +53,16 @@ final class ResourceUpdateService {
         int attempt = 0;
         while (true) {
             try {
-                manager.replaceResource(resource, editor);
+                replaceResource(resource, editor);
                 return;
             } catch (CompletionException ce) {
                 Throwable cause = ce.getCause();
-                if (isNotConflict(cause) || ++attempt >= retries) {
+                if (isNotConflict(cause) || attempt++ >= retries) {
                     throw (cause instanceof RuntimeException re)
                         ? re : new RuntimeException(cause);
                 }
             } catch (KubernetesClientException kce) {
-                if (isNotConflict(kce) || ++attempt >= retries) {
+                if (isNotConflict(kce) || attempt++ >= retries) {
                     throw kce;
                 }
             }

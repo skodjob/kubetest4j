@@ -206,7 +206,21 @@ public final class KubeResourceManager {
     }
 
     private ClusterContext<? extends KubeCmdClient<?>> clusterContext() {
-        return clusterContext(this.contextId);
+        return clusterContext(activeContextId());
+    }
+
+    /**
+     * Returns the effective context id for the current thread.
+     * For the default instance, honors {@code useContext()} overrides;
+     * non-default instances always use their own fixed context id.
+     *
+     * @return the active context id
+     */
+    String activeContextId() {
+        if (KubeTestConstants.DEFAULT_CONTEXT_NAME.equals(this.contextId)) {
+            return CURRENT_CLUSTER_CONTEXT.get();
+        }
+        return this.contextId;
     }
 
     /**
@@ -291,6 +305,7 @@ public final class KubeResourceManager {
      */
     /* test */ static void clearInstances() {
         CONTEXT_INSTANCES.clear();
+        ResourceTrackerService.reset();
     }
 
     /**
@@ -366,9 +381,13 @@ public final class KubeResourceManager {
 
     synchronized ResourceTrackerService tracker() {
         if (tracker == null) {
-            tracker = new ResourceTrackerService(contextId, this::getTestContext,
-                r -> new ResourceItem<>(
-                    () -> deleteResourceWithWait(r), r));
+            tracker = new ResourceTrackerService(this, this::getTestContext,
+                r -> {
+                    KubeResourceManager active =
+                        getForContext(activeContextId());
+                    return new ResourceItem<>(
+                        () -> active.deleteResourceWithWait(r), r);
+                });
         }
         return tracker;
     }
