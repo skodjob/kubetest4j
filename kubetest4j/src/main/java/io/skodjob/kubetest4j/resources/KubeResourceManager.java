@@ -600,7 +600,7 @@ public final class KubeResourceManager {
                 LOGGER.atLevel(logLevel).log("  Test: {}", test);
                 int batchIndex = 0;
                 for (ResourceBatch batch : batches) {
-                    LOGGER.atLevel(logLevel).log("    Batch #{} ({} items)", batchIndex, batch.size());
+                    LOGGER.atLevel(logLevel).log("Batch #{} ({} items)", batchIndex, batch.size());
                     for (ResourceItem<?> item : batch.items()) {
                         Optional.ofNullable(item.resource())
                             .ifPresent(r -> LoggerUtils.logResource("Managed resource:", logLevel, r));
