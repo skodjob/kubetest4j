@@ -8,8 +8,6 @@ import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
@@ -20,8 +18,6 @@ import java.util.function.Consumer;
  * <p>Package-private — accessed only through {@link KubeResourceManager}.
  */
 final class ResourceUpdateService {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(ResourceUpdateService.class);
 
     private final KubeResourceManager manager;
 
