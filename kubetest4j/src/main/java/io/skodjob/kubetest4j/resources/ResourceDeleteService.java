@@ -118,6 +118,7 @@ final class ResourceDeleteService {
                 deleteBatch(batch, async, errors);
             }
         } finally {
+            tracker.cleanupAfterDelete();
             LoggerUtils.logSeparator();
         }
         if (!errors.isEmpty()) {
@@ -126,7 +127,6 @@ final class ResourceDeleteService {
             errors.forEach(composite::addSuppressed);
             throw composite;
         }
-        tracker.cleanupAfterDelete();
     }
 
     private void deleteBatch(ResourceBatch batch, boolean async,
