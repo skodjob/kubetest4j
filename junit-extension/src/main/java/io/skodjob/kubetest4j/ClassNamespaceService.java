@@ -80,7 +80,7 @@ class ClassNamespaceService {
         Class<?> testClass = context.getRequiredTestClass();
         List<ClassNamespaceEntry> entries = new ArrayList<>();
 
-        for (Field field : testClass.getDeclaredFields()) {
+        for (Field field : DependencyInjector.getAllFields(testClass)) {
             ClassNamespace annotation = field.getAnnotation(ClassNamespace.class);
             if (annotation == null) {
                 continue;

@@ -26,6 +26,8 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -93,7 +95,7 @@ class DependencyInjector {
             return;
         }
 
-        Field[] fields = context.getRequiredTestClass().getDeclaredFields();
+        List<Field> fields = getAllFields(context.getRequiredTestClass());
         for (Field field : fields) {
             // Skip static fields — @ClassNamespace static fields are handled by ClassNamespaceService
             if (Modifier.isStatic(field.getModifiers())) {
@@ -366,5 +368,21 @@ class DependencyInjector {
         public String getName() {
             return field.getName();
         }
+    }
+
+    /**
+     * Returns all fields from the class and its superclasses.
+     *
+     * @param clazz the class to scan
+     * @return list of all fields in the hierarchy
+     */
+    static List<Field> getAllFields(Class<?> clazz) {
+        List<Field> fields = new ArrayList<>();
+        Class<?> cls = clazz;
+        while (cls != null && cls != Object.class) {
+            Collections.addAll(fields, cls.getDeclaredFields());
+            cls = cls.getSuperclass();
+        }
+        return fields;
     }
 }

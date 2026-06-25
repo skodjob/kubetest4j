@@ -91,7 +91,7 @@ class MethodNamespaceService {
         int[] counter = {0};
 
         // Scan fields for @MethodNamespace
-        for (Field field : testClass.getDeclaredFields()) {
+        for (Field field : DependencyInjector.getAllFields(testClass)) {
             MethodNamespace annotation = field.getAnnotation(MethodNamespace.class);
             if (annotation == null) {
                 continue;
