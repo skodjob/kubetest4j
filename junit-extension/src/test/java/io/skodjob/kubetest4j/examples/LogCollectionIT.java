@@ -82,9 +82,9 @@ class LogCollectionIT {
     void testCheckLogs() {
         assertTrue(Files.exists(Paths.get(System.getProperty("user.dir"),
             "/target/test-logs/io.skodjob.kubetest4j.examples.LogCollectionIT/" +
-                "LogCollectionIT/primary/cluster-wide-resources/nodes")));
+                "testSuccessfulOperation/primary/cluster-wide-resources/nodes")));
         assertTrue(Files.exists(Paths.get(System.getProperty("user.dir"),
             "/target/test-logs/io.skodjob.kubetest4j.examples.LogCollectionIT/" +
-                "LogCollectionIT/primary/log-collection-test/configmaps")));
+                "testSuccessfulOperation/primary/log-collection-test/configmaps")));
     }
 }
