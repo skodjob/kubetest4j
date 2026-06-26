@@ -101,22 +101,18 @@ class LogCollectionService {
      */
     public void collectLogs(ExtensionContext context, String suffix) {
         TestConfig testConfig = configurationService.getTestConfig(context);
-        LogCollector logCollector = getLogCollector(context);
-
-        if (logCollector == null) {
-            LOGGER.warn("Skipping log collection - log collector not available");
-            return;
-        }
 
         try {
             LOGGER.info("Collecting logs: {}", suffix);
 
-            // Recompute the primary LogCollector's root path from the current context.
-            // During test execution, context.getDisplayName() returns the method name,
-            // producing per-method subdirectories. During beforeAll/afterAll, it returns
-            // the class display name, preserving class-level behavior.
             String updatedPath = getLogPath(context, testConfig, KubeTestConstants.DEFAULT_CONTEXT_NAME);
-            logCollector.setRootFolderPath(updatedPath);
+            KubeResourceManager resourceManager = contextProvider.getResourceManager(context);
+            LogCollector logCollector = createLogBuilder(testConfig, resourceManager, updatedPath).build();
+
+            if (logCollector == null) {
+                LOGGER.warn("Skipping log collection - log collector not available");
+                return;
+            }
 
             // Create label selector to find namespaces with log collection enabled
             LabelSelector logCollectionSelector = new LabelSelectorBuilder()

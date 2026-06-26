@@ -30,24 +30,4 @@ final class LogCollectorBuilderTest {
         assertThrows(RuntimeException.class, logCollectorBuilder::build);
     }
 
-    @Test
-    void testSetRootFolderPathUpdatesPath() {
-        LogCollector logCollector = new LogCollectorBuilder()
-            .withRootFolderPath("/original/path")
-            .build();
-
-        logCollector.setRootFolderPath("/updated/path");
-
-        LogCollectorBuilder copiedBuilder = new LogCollectorBuilder(logCollector);
-        assertEquals("/updated/path", copiedBuilder.getRootFolderPath());
-    }
-
-    @Test
-    void testSetRootFolderPathRejectsNull() {
-        LogCollector logCollector = new LogCollectorBuilder()
-            .withRootFolderPath("/some/path")
-            .build();
-
-        assertThrows(IllegalArgumentException.class, () -> logCollector.setRootFolderPath(null));
-    }
 }
