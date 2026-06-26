@@ -72,6 +72,20 @@ public class LogCollector {
     }
 
     /**
+     * Updates the root folder path for log collection.
+     * This allows the path to be changed between collection runs,
+     * for example to separate logs by test method.
+     *
+     * @param rootFolderPath new root folder path (must not be null)
+     */
+    public void setRootFolderPath(String rootFolderPath) {
+        if (rootFolderPath == null) {
+            throw new IllegalArgumentException("rootFolderPath must not be null");
+        }
+        this.rootFolderPath = rootFolderPath;
+    }
+
+    /**
      * Method that collects all logs and YAML files from Namespaces containing specified LabelSelector, collected into
      * {@link #rootFolderPath}.
      *

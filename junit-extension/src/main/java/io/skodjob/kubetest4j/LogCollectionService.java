@@ -111,6 +111,13 @@ class LogCollectionService {
         try {
             LOGGER.info("Collecting logs: {}", suffix);
 
+            // Recompute the primary LogCollector's root path from the current context.
+            // During test execution, context.getDisplayName() returns the method name,
+            // producing per-method subdirectories. During beforeAll/afterAll, it returns
+            // the class display name, preserving class-level behavior.
+            String updatedPath = getLogPath(context, testConqfig, KubeTestConstants.DEFAULT_CONTEXT_NAME);
+            logCollector.setRootFolderPath(updatedPath);
+
             // Create label selector to find namespaces with log collection enabled
             LabelSelector logCollectionSelector = new LabelSelectorBuilder()
                 .addToMatchLabels(LOG_COLLECTION_LABEL_KEY, LOG_COLLECTION_LABEL_VALUE)

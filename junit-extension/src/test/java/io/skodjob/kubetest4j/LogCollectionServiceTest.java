@@ -29,8 +29,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -88,6 +90,8 @@ class LogCollectionServiceTest {
     void setUp() {
         manager = new LogCollectionService(contextStoreHelper, configurationService, contextProvider);
         lenient().when(extensionContext.getStore(any(ExtensionContext.Namespace.class))).thenReturn(store);
+        lenient().when(extensionContext.getDisplayName()).thenReturn("testMethodA()");
+        lenient().when(extensionContext.getTestClass()).thenReturn(Optional.of(LogCollectionServiceTest.class));
         lenient().when(resourceManager.kubeClient()).thenReturn(kubeClient);
         lenient().when(resourceManager.kubeCmdClient()).thenReturn(kubeCmdClient);
         lenient().when(kubeClient.getClient()).thenReturn(k8sClient);
@@ -369,6 +373,87 @@ class LogCollectionServiceTest {
             // Then
             // Should skip log collection since there are no labeled namespaces
             verify(logCollector, never()).collectFromNamespaces(any(String[].class));
+        }
+    }
+
+    @Nested
+    @DisplayName("Per-Method Log Path Tests")
+    class PerMethodLogPathTests {
+
+        @Test
+        @DisplayName("Should update log collector path from method context")
+        void shouldUpdateLogCollectorPathFromMethodContext() {
+            // Given
+            when(extensionContext.getDisplayName()).thenReturn("testMethodA()");
+
+            TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
+                List.of("pods"), List.of(), false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
+            when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
+
+            NamespaceList namespaceList = mock(NamespaceList.class);
+            when(labelSelector.list()).thenReturn(namespaceList);
+            when(namespaceList.getItems()).thenReturn(List.of());
+
+            // When
+            manager.collectLogs(extensionContext, "test-suffix");
+
+            // Then
+            verify(logCollector).setRootFolderPath(argThat(path -> path.contains("testMethodA")));
+        }
+
+        @Test
+        @DisplayName("Should use class display name for class-level context")
+        void shouldUseClassDisplayNameForClassLevelContext() {
+            // Given
+            when(extensionContext.getDisplayName()).thenReturn("MyTestClass");
+
+            TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
+                List.of("pods"), List.of(), false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
+            when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
+
+            NamespaceList namespaceList = mock(NamespaceList.class);
+            when(labelSelector.list()).thenReturn(namespaceList);
+            when(namespaceList.getItems()).thenReturn(List.of());
+
+            // When
+            manager.collectLogs(extensionContext, "test-suffix");
+
+            // Then
+            verify(logCollector).setRootFolderPath(argThat(path -> path.contains("MyTestClass")));
+        }
+
+        @Test
+        @DisplayName("Should update path on each collectLogs call")
+        void shouldUpdatePathOnEachCollectLogsCall() {
+            // Given
+            TestConfig testConfig = createTestConfig("/logs", LogCollectionStrategy.ON_FAILURE,
+                List.of("pods"), List.of(), false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            when(contextStoreHelper.getLogCollector(extensionContext)).thenReturn(logCollector);
+            when(contextProvider.getResourceManager(extensionContext)).thenReturn(resourceManager);
+            when(contextProvider.getKubeContextManagers(extensionContext)).thenReturn(Map.of());
+
+            NamespaceList namespaceList = mock(NamespaceList.class);
+            when(labelSelector.list()).thenReturn(namespaceList);
+            when(namespaceList.getItems()).thenReturn(List.of());
+
+            // When - first call with method A
+            when(extensionContext.getDisplayName()).thenReturn("testMethodA()");
+            manager.collectLogs(extensionContext, "first-suffix");
+
+            // When - second call with method B
+            when(extensionContext.getDisplayName()).thenReturn("testMethodB()");
+            manager.collectLogs(extensionContext, "second-suffix");
+
+            // Then - setRootFolderPath called twice with different paths
+            verify(logCollector).setRootFolderPath(argThat(path -> path.contains("testMethodA")));
+            verify(logCollector).setRootFolderPath(argThat(path -> path.contains("testMethodB")));
         }
     }
 
