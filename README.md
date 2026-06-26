@@ -85,6 +85,7 @@ This means you can pass configuration directly via Maven:
 * [strimzi.io](https://github.com/strimzi/kafka-access-operator) Kafka access operator - [e2e](https://github.com/strimzi/kafka-access-operator/tree/main/systemtest)
 * [debezium.io](https://github.com/debezium/debezium-operator) Debezium Operator - [e2e](https://github.com/debezium/debezium-operator/tree/main/systemtests)
 * [streamshub](https://github.com/streamshub) Streams E2E - [e2e](https://github.com/streamshub/streams-e2e)
+* [streamshub](https://github.com/streamshub) Streamshub MCP - [streamshub-mcp](https://github.com/streamshub/streamshub-mcp)
 
 ## Maintainers
 * [David Kornel](https://github.com/kornys) <kornys@outlook.com>
