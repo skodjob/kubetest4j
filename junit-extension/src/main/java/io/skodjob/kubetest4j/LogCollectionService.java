@@ -115,7 +115,7 @@ class LogCollectionService {
             // During test execution, context.getDisplayName() returns the method name,
             // producing per-method subdirectories. During beforeAll/afterAll, it returns
             // the class display name, preserving class-level behavior.
-            String updatedPath = getLogPath(context, testConqfig, KubeTestConstants.DEFAULT_CONTEXT_NAME);
+            String updatedPath = getLogPath(context, testConfig, KubeTestConstants.DEFAULT_CONTEXT_NAME);
             logCollector.setRootFolderPath(updatedPath);
 
             // Create label selector to find namespaces with log collection enabled
