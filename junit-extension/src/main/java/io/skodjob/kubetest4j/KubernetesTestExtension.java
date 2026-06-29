@@ -166,8 +166,13 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
             return;
         }
 
-        // Handle cleanup by delegating to ResourceManager logic
-        handleAutomaticCleanup(context, testConfig);
+        Exception cleanupError = null;
+        try {
+            handleAutomaticCleanup(context, testConfig);
+        } catch (Exception e) {
+            LOGGER.error("Resource cleanup failed in afterAll: {}", e.getMessage(), e);
+            cleanupError = e;
+        }
 
         // Clean up class namespaces (only those created by the test)
         classNamespaceService.cleanupClassNamespaces(context);
@@ -187,6 +192,10 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
         LOGGER.info("TestClass {} FINISHED", context.getRequiredTestClass().getName());
         logVisualSeparator(context);
+
+        if (cleanupError != null) {
+            throw cleanupError;
+        }
     }
 
     @Override
@@ -213,7 +222,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
     }
 
     @Override
-    public void afterEach(@NonNull ExtensionContext context) {
+    public void afterEach(@NonNull ExtensionContext context) throws Exception {
         TestConfig testConfig = getTestConfig(context);
         if (testConfig == null) {
             return;
@@ -243,11 +252,21 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         // Handle cleanup by delegating to ResourceManager logic
         // KRM's batch-LIFO ordering ensures correct deletion order:
         // resources inside namespaces are deleted before the namespaces themselves
-        handleAutomaticCleanup(context, testConfig);
+        Exception cleanupError = null;
+        try {
+            handleAutomaticCleanup(context, testConfig);
+        } catch (Exception e) {
+            LOGGER.error("Resource cleanup failed in afterEach: {}", e.getMessage(), e);
+            cleanupError = e;
+        }
 
         LOGGER.info("Test {}.{} {}", context.getRequiredTestClass().getName(),
             context.getDisplayName().replace("()", ""), state);
         logVisualSeparator(context);
+
+        if (cleanupError != null) {
+            throw cleanupError;
+        }
     }
 
     // ===============================

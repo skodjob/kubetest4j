@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.Mockito;
 
+import io.skodjob.kubetest4j.wait.WaitException;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -598,6 +600,77 @@ public class KubeResourceManagerMockTest {
     void testClearCurrentBatchNoopWhenNoBatch() {
         // Should not throw when no batch is open
         assertDoesNotThrow(() -> kubeResourceManager.clearCurrentBatch());
+    }
+
+    @Test
+    void testWaitForDeletionReturnsWhenResourceIsNull() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("gone-ns").endMetadata().build();
+
+        when(namespaceResource.get()).thenReturn(null);
+
+        ResourceDeleteService deleteService =
+            new ResourceDeleteService(kubeResourceManager);
+        assertDoesNotThrow(
+            () -> deleteService.waitForDeletionWithRetry(ns, 5000, 100, 200),
+            "Should return immediately when resource is already gone");
+    }
+
+    @Test
+    void testWaitForDeletionReturnsAfterResourceDisappears() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("slow-ns").endMetadata().build();
+
+        when(namespaceResource.get())
+            .thenReturn(ns)
+            .thenReturn(ns)
+            .thenReturn(null);
+
+        ResourceDeleteService deleteService =
+            new ResourceDeleteService(kubeResourceManager);
+        assertDoesNotThrow(
+            () -> deleteService.waitForDeletionWithRetry(ns, 5000, 50, 5000),
+            "Should return once resource disappears after polling");
+    }
+
+    @Test
+    void testWaitForDeletionReissuesDeleteWhenResourceReappears() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("recreated-ns").endMetadata().build();
+
+        AtomicInteger deleteCount = new AtomicInteger(0);
+        when(namespaceResource.get())
+            .thenReturn(ns)
+            .thenReturn(ns)
+            .thenReturn(ns)
+            .thenReturn(null);
+        when(namespaceResource.delete()).thenAnswer(invocation -> {
+            deleteCount.incrementAndGet();
+            return List.of();
+        });
+
+        ResourceDeleteService deleteService =
+            new ResourceDeleteService(kubeResourceManager);
+        // retryInterval=0 forces re-delete on every poll
+        deleteService.waitForDeletionWithRetry(ns, 5000, 50, 0);
+
+        assertTrue(deleteCount.get() >= 2,
+            "Should re-issue DELETE when resource persists. "
+                + "Actual delete count: " + deleteCount.get());
+    }
+
+    @Test
+    void testWaitForDeletionTimesOut() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("stuck-ns").endMetadata().build();
+
+        when(namespaceResource.get()).thenReturn(ns);
+
+        ResourceDeleteService deleteService =
+            new ResourceDeleteService(kubeResourceManager);
+        assertThrows(WaitException.class,
+            () -> deleteService.waitForDeletionWithRetry(ns, 500, 50, 5000),
+            "Should throw WaitException when resource never disappears");
     }
 
     @Test

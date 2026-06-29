@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
+import io.skodjob.kubetest4j.wait.WaitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,8 +22,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Handles resource deletion and bulk cleanup orchestration.
@@ -47,15 +46,9 @@ final class ResourceDeleteService {
         List<CompletableFuture<Void>> waiters = new ArrayList<>();
         List<Exception> errors = new ArrayList<>();
         for (T resource : resources) {
-            ResourceType<T> type = manager.findResourceType(resource);
             LoggerUtils.logResource("Deleting", resource);
             try {
-                if (type == null) {
-                    manager.kubeClient().getClient()
-                        .resource(resource).delete();
-                } else {
-                    type.delete(resource);
-                }
+                issueDeletion(resource);
 
                 manager.tracker().removeFromStack(resource);
 
@@ -215,6 +208,18 @@ final class ResourceDeleteService {
         }
     }
 
+    // ───────────────────────  DELETE HELPERS  ────────────────────
+
+    <T extends HasMetadata> void issueDeletion(T resource) {
+        ResourceType<T> type = manager.findResourceType(resource);
+        if (type == null) {
+            manager.kubeClient().getClient()
+                .resource(resource).delete();
+        } else {
+            type.delete(resource);
+        }
+    }
+
     // ───────────────────────  DELETE WAIT  ─────────────────────
 
     <T extends HasMetadata> void decideDeleteWaitAsync(
@@ -226,20 +231,14 @@ final class ResourceDeleteService {
                     KubeResourceManager.operationSemaphore().get();
                 sem.acquireUninterruptibly();
                 try {
-                    assertTrue(manager.waitResourceCondition(
-                        res, ResourceCondition.deletion()),
-                        "Timed out deleting " + res.getKind()
-                            + "/" + res.getMetadata().getName());
+                    waitForDeletionWithRetry(res);
                 } finally {
                     sem.release();
                 }
             }, KubeResourceManager.executor());
         } else {
-            cf = CompletableFuture.runAsync(() ->
-                assertTrue(manager.waitResourceCondition(
-                    res, ResourceCondition.deletion()),
-                    "Timed out deleting " + res.getKind()
-                        + "/" + res.getMetadata().getName()),
+            cf = CompletableFuture.runAsync(
+                () -> waitForDeletionWithRetry(res),
                 KubeResourceManager.executor());
         }
         if (async) {
@@ -265,5 +264,55 @@ final class ResourceDeleteService {
                 throw new IllegalStateException(e.getMessage(), e);
             }
         }
+    }
+
+    private <T extends HasMetadata> void waitForDeletionWithRetry(T resource) {
+        waitForDeletionWithRetry(resource,
+            KubeTestConstants.GLOBAL_TIMEOUT,
+            KubeTestConstants.GLOBAL_POLL_INTERVAL_MEDIUM,
+            KubeTestConstants.DELETE_RETRY_INTERVAL);
+    }
+
+    <T extends HasMetadata> void waitForDeletionWithRetry(
+        T resource, long timeout, long pollInterval, long retryInterval) {
+        long deadline = System.currentTimeMillis() + timeout;
+        long lastDeleteTime = System.currentTimeMillis();
+
+        while (System.currentTimeMillis() < deadline) {
+            T current = manager.kubeClient().getClient()
+                .resource(resource).get();
+            if (current == null) {
+                return;
+            }
+
+            if (System.currentTimeMillis() - lastDeleteTime
+                >= retryInterval) {
+                LOGGER.info("Resource {}/{} still exists — re-issuing DELETE",
+                    resource.getKind(),
+                    resource.getMetadata().getName());
+                try {
+                    issueDeletion(resource);
+                } catch (Exception e) {
+                    LOGGER.debug(
+                        "Re-delete of {}/{} failed (may already be gone): {}",
+                        resource.getKind(),
+                        resource.getMetadata().getName(),
+                        e.getMessage());
+                }
+                lastDeleteTime = System.currentTimeMillis();
+            }
+
+            try {
+                Thread.sleep(pollInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+
+        throw new WaitException(String.format(
+            "Timed out waiting for deletion of %s/%s after %d ms",
+            resource.getKind(), resource.getMetadata().getName(),
+            timeout));
     }
 }

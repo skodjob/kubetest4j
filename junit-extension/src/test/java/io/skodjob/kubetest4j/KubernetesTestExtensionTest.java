@@ -8,6 +8,7 @@ import io.skodjob.kubetest4j.annotations.CleanupStrategy;
 import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
+import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -30,9 +31,14 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Unit tests for KubernetesTestExtension.
@@ -390,6 +396,76 @@ class KubernetesTestExtensionTest {
             assertNotNull(annotation);
             assertEquals(1, annotation.resourceTypes().length);
             assertEquals(StubResourceType.class, annotation.resourceTypes()[0]);
+        }
+    }
+
+    @Nested
+    @DisplayName("AfterAll Cleanup Resilience Tests")
+    class AfterAllCleanupResilienceTests {
+
+        @Test
+        @DisplayName("afterAll should complete all cleanup even when resource deletion fails")
+        void afterAllShouldCompleteCleanupEvenWhenDeletionFails() throws Exception {
+            ContextStoreHelper mockHelper = mock(ContextStoreHelper.class);
+
+            TestConfig config = new TestConfig(
+                CleanupStrategy.AUTOMATIC, false, "", "#", 76, false,
+                LogCollectionStrategy.ON_FAILURE, "", false, List.of(), List.of()
+            );
+            lenient().when(mockHelper.getTestConfig(any())).thenReturn(config);
+
+            KubeResourceManager mockManager = mock(KubeResourceManager.class);
+            lenient().when(mockHelper.getResourceManager(any())).thenReturn(mockManager);
+            doThrow(new RuntimeException("cleanup failed"))
+                .when(mockManager).deleteResources(anyBoolean());
+
+            lenient().when(mockHelper.getPreviousResourceTypes(any())).thenReturn(null);
+            lenient().when(mockHelper.getContextManagers(any())).thenReturn(null);
+
+            ExtensionContext mockContext = mock(ExtensionContext.class);
+            lenient().when(mockContext.getRequiredTestClass())
+                .thenReturn((Class) TestClass.class);
+            lenient().when(mockContext.getDisplayName()).thenReturn("testMethod");
+
+            KubernetesTestExtension ext = new KubernetesTestExtension(mockHelper);
+
+            RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> ext.afterAll(mockContext));
+            assertEquals("cleanup failed", thrown.getMessage());
+
+            // getPreviousResourceTypes is only called AFTER handleAutomaticCleanup;
+            // if the exception wasn't caught, this call would never happen
+            verify(mockHelper).getPreviousResourceTypes(mockContext);
+        }
+
+        @Test
+        @DisplayName("afterEach should log test status even when cleanup fails")
+        void afterEachShouldLogEvenWhenCleanupFails() throws Exception {
+            ContextStoreHelper mockHelper = mock(ContextStoreHelper.class);
+
+            TestConfig config = new TestConfig(
+                CleanupStrategy.AUTOMATIC, false, "", "#", 76, false,
+                LogCollectionStrategy.ON_FAILURE, "", false, List.of(), List.of()
+            );
+            lenient().when(mockHelper.getTestConfig(any())).thenReturn(config);
+
+            KubeResourceManager mockManager = mock(KubeResourceManager.class);
+            lenient().when(mockHelper.getResourceManager(any())).thenReturn(mockManager);
+            doThrow(new RuntimeException("cleanup failed"))
+                .when(mockManager).deleteResources(anyBoolean());
+
+            ExtensionContext mockContext = mock(ExtensionContext.class);
+            lenient().when(mockContext.getRequiredTestClass())
+                .thenReturn((Class) TestClass.class);
+            lenient().when(mockContext.getDisplayName()).thenReturn("testMethod");
+            lenient().when(mockContext.getExecutionException())
+                .thenReturn(java.util.Optional.empty());
+
+            KubernetesTestExtension ext = new KubernetesTestExtension(mockHelper);
+
+            RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> ext.afterEach(mockContext));
+            assertEquals("cleanup failed", thrown.getMessage());
         }
     }
 

@@ -82,6 +82,13 @@ public final class KubeTestConstants {
     public static final String DEFAULT_CONTEXT_NAME = "primary";
 
     /**
+     * Interval in milliseconds between re-issuing DELETE during deletion wait.
+     * Controller-managed resources may be recreated after initial deletion; re-deleting
+     * periodically prevents a full-timeout stall.
+     */
+    public static final long DELETE_RETRY_INTERVAL = Duration.ofSeconds(30).toMillis();
+
+    /**
      * Default maximum number of concurrent async operations (create/delete) against the Kubernetes API.
      */
     public static final int DEFAULT_MAX_CONCURRENT_OPERATIONS = 50;
