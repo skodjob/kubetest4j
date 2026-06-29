@@ -18,9 +18,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -329,6 +332,73 @@ class ExceptionHandlerDelegateTest {
             // Then
             verify(logCollectionCallback).collectLogs(eq(extensionContext),
                 eq("failure-test-execution-complex test name (with params)"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Cleanup Error Suppression Tests")
+    class CleanupErrorSuppressionTests {
+
+        @Test
+        @DisplayName("Should add cleanup error as suppressed and re-throw original")
+        void shouldAddCleanupErrorAsSuppressedAndReThrowOriginal() {
+            RuntimeException testException = new RuntimeException("Original test failure");
+            RuntimeException cleanupException = new RuntimeException("Cleanup failed");
+            TestConfig testConfig = createTestConfig(
+                LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            doThrow(cleanupException).when(cleanupCallback)
+                .handleAutomaticCleanup(extensionContext, testConfig);
+
+            Throwable thrown = assertThrows(RuntimeException.class, () ->
+                delegate.handleTestExecutionException(extensionContext, testException));
+
+            assertSame(testException, thrown,
+                "Should re-throw the original test exception");
+            assertEquals(1, thrown.getSuppressed().length,
+                "Should have exactly one suppressed exception");
+            assertSame(cleanupException, thrown.getSuppressed()[0],
+                "Suppressed exception should be the cleanup error");
+        }
+
+        @Test
+        @DisplayName("Should preserve original error in beforeAll when cleanup fails")
+        void shouldPreserveOriginalErrorInBeforeAll() {
+            RuntimeException testException = new RuntimeException("BeforeAll failed");
+            RuntimeException cleanupException = new RuntimeException("Cleanup boom");
+            TestConfig testConfig = createTestConfig(
+                LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            doThrow(cleanupException).when(cleanupCallback)
+                .handleAutomaticCleanup(extensionContext, testConfig);
+
+            Throwable thrown = assertThrows(RuntimeException.class, () ->
+                delegate.handleBeforeAllMethodExecutionException(
+                    extensionContext, testException));
+
+            assertSame(testException, thrown);
+            assertEquals(1, thrown.getSuppressed().length);
+            assertSame(cleanupException, thrown.getSuppressed()[0]);
+        }
+
+        @Test
+        @DisplayName("Should preserve original error in afterEach when cleanup fails")
+        void shouldPreserveOriginalErrorInAfterEach() {
+            RuntimeException testException = new RuntimeException("AfterEach failed");
+            RuntimeException cleanupException = new RuntimeException("Cleanup boom");
+            TestConfig testConfig = createTestConfig(
+                LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            doThrow(cleanupException).when(cleanupCallback)
+                .handleAutomaticCleanup(extensionContext, testConfig);
+
+            Throwable thrown = assertThrows(RuntimeException.class, () ->
+                delegate.handleAfterEachMethodExecutionException(
+                    extensionContext, testException));
+
+            assertSame(testException, thrown);
+            assertEquals(1, thrown.getSuppressed().length);
+            assertSame(cleanupException, thrown.getSuppressed()[0]);
         }
     }
 

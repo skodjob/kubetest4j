@@ -49,7 +49,13 @@ class ExceptionHandlerDelegate {
     public void handleTestExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
         LOGGER.error("Test '{}' failed during execution", context.getDisplayName(), throwable);
-        handleTestFailure(context, "test-execution");
+        try {
+            handleTestFailure(context, "test-execution");
+        } catch (Exception cleanupError) {
+            LOGGER.error("Cleanup failed during phase 'test-execution': {}",
+                cleanupError.getMessage(), cleanupError);
+            throwable.addSuppressed(cleanupError);
+        }
         throw throwable;
     }
 
@@ -59,7 +65,13 @@ class ExceptionHandlerDelegate {
     public void handleBeforeAllMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
         LOGGER.error("Test '{}' failed during beforeAll", context.getDisplayName(), throwable);
-        handleTestFailure(context, "before-all");
+        try {
+            handleTestFailure(context, "before-all");
+        } catch (Exception cleanupError) {
+            LOGGER.error("Cleanup failed during phase 'before-all': {}",
+                cleanupError.getMessage(), cleanupError);
+            throwable.addSuppressed(cleanupError);
+        }
         throw throwable;
     }
 
@@ -69,7 +81,13 @@ class ExceptionHandlerDelegate {
     public void handleBeforeEachMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
         LOGGER.error("Test '{}' failed during beforeEach", context.getDisplayName(), throwable);
-        handleTestFailure(context, "before-each");
+        try {
+            handleTestFailure(context, "before-each");
+        } catch (Exception cleanupError) {
+            LOGGER.error("Cleanup failed during phase 'before-each': {}",
+                cleanupError.getMessage(), cleanupError);
+            throwable.addSuppressed(cleanupError);
+        }
         throw throwable;
     }
 
@@ -79,7 +97,13 @@ class ExceptionHandlerDelegate {
     public void handleAfterEachMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
         LOGGER.error("Test '{}' failed during afterEach", context.getDisplayName(), throwable);
-        handleTestFailure(context, "after-each");
+        try {
+            handleTestFailure(context, "after-each");
+        } catch (Exception cleanupError) {
+            LOGGER.error("Cleanup failed during phase 'after-each': {}",
+                cleanupError.getMessage(), cleanupError);
+            throwable.addSuppressed(cleanupError);
+        }
         throw throwable;
     }
 
@@ -89,7 +113,13 @@ class ExceptionHandlerDelegate {
     public void handleAfterAllMethodExecutionException(ExtensionContext context, @NonNull Throwable throwable)
         throws Throwable {
         LOGGER.error("Test '{}' failed during afterAll", context.getDisplayName(), throwable);
-        handleTestFailure(context, "after-all");
+        try {
+            handleTestFailure(context, "after-all");
+        } catch (Exception cleanupError) {
+            LOGGER.error("Cleanup failed during phase 'after-all': {}",
+                cleanupError.getMessage(), cleanupError);
+            throwable.addSuppressed(cleanupError);
+        }
         throw throwable;
     }
 

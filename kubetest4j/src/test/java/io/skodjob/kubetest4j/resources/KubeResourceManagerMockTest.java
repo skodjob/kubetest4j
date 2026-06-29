@@ -327,23 +327,28 @@ public class KubeResourceManagerMockTest {
     }
 
     @Test
-    void testCollectAsyncErrorsHandlesInterruption() {
+    void testCollectAsyncErrorsWaitsForAllFutures() {
         KubeResourceManager realManager = KubeResourceManager.get();
 
-        CompletableFuture<Void> neverCompletes = new CompletableFuture<>();
-        List<Exception> errors = new ArrayList<>();
-
-        try {
-            Thread.currentThread().interrupt();
-            assertDoesNotThrow(
-                () -> realManager.collectAsyncErrors(
-                    List.of(neverCompletes), errors),
-                "collectAsyncErrors should not throw on interruption");
-            assertFalse(errors.isEmpty(),
-                "Should collect the interruption error");
-        } finally {
-            Thread.interrupted();
+        AtomicInteger completedCount = new AtomicInteger(0);
+        List<CompletableFuture<Void>> waiters = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            waiters.add(CompletableFuture.runAsync(() -> {
+                try {
+                    Thread.sleep(300);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                completedCount.incrementAndGet();
+            }));
         }
+
+        List<Exception> errors = new ArrayList<>();
+        realManager.collectAsyncErrors(waiters, errors);
+
+        assertEquals(5, completedCount.get(),
+            "All futures must complete before barrier returns");
+        assertTrue(errors.isEmpty(), "No errors expected");
     }
 
     @Test
@@ -449,6 +454,46 @@ public class KubeResourceManagerMockTest {
             "Batch items should be deleted before items pushed earlier");
         assertTrue(deletionOrder.indexOf("in-batch-2") < deletionOrder.indexOf("before-batch"),
             "Batch items should be deleted before items pushed earlier");
+    }
+
+    @Test
+    void testNoBatchOverlapWithAsyncDeletion() {
+        AtomicInteger activeBatches = new AtomicInteger(0);
+        AtomicInteger maxConcurrentBatches = new AtomicInteger(0);
+        List<String> events = Collections.synchronizedList(new ArrayList<>());
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
+            int running = activeBatches.incrementAndGet();
+            maxConcurrentBatches.updateAndGet(curr -> Math.max(curr, running));
+            events.add("batch0-start");
+            Thread.sleep(200);
+            events.add("batch0-end");
+            activeBatches.decrementAndGet();
+        }, new NamespaceBuilder().withNewMetadata()
+            .withName("b0-ns").endMetadata().build()));
+
+        kubeResourceManager.startBatch();
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
+            int running = activeBatches.incrementAndGet();
+            maxConcurrentBatches.updateAndGet(curr -> Math.max(curr, running));
+            events.add("batch1-start");
+            Thread.sleep(200);
+            events.add("batch1-end");
+            activeBatches.decrementAndGet();
+        }, new NamespaceBuilder().withNewMetadata()
+            .withName("b1-ns").endMetadata().build()));
+        kubeResourceManager.endBatch();
+
+        kubeResourceManager.deleteResources(true);
+
+        int b1End = events.indexOf("batch1-end");
+        int b0Start = events.indexOf("batch0-start");
+        assertTrue(b1End >= 0 && b0Start >= 0,
+            "Both batches should have executed. Events: " + events);
+        assertTrue(b1End < b0Start,
+            "Batch 1 must complete before batch 0 starts (LIFO, no overlap). Events: " + events);
+        assertEquals(1, maxConcurrentBatches.get(),
+            "Only one batch should be active at a time");
     }
 
     @Test

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -116,6 +117,7 @@ final class ResourceDeleteService {
                 LOGGER.info("Deleting batch #{} ({} items)",
                     batchIndex, batch.size());
                 deleteBatch(batch, async, errors);
+                LOGGER.info("Batch #{} deletion completed", batchIndex);
             }
         } finally {
             tracker.cleanupAfterDelete();
@@ -194,18 +196,12 @@ final class ResourceDeleteService {
         try {
             CompletableFuture.allOf(
                 waiters.toArray(new CompletableFuture[0]))
-                .get(KubeTestConstants.GLOBAL_TIMEOUT,
-                    TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+                .join();
+        } catch (CompletionException e) {
             collectIndividualFutureErrors(waiters, errors);
             if (errors.isEmpty()) {
-                errors.add(e);
-            }
-        } catch (TimeoutException | ExecutionException e) {
-            collectIndividualFutureErrors(waiters, errors);
-            if (errors.isEmpty()) {
-                errors.add(e);
+                errors.add(e.getCause() instanceof Exception
+                    ? (Exception) e.getCause() : e);
             }
         }
     }
