@@ -199,10 +199,6 @@ final class ResourceDeleteService {
                 .join();
         } catch (CompletionException e) {
             collectIndividualFutureErrors(waiters, errors);
-            if (errors.isEmpty()) {
-                errors.add(e.getCause() instanceof Exception
-                    ? (Exception) e.getCause() : e);
-            }
         }
     }
 

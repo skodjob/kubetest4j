@@ -109,6 +109,7 @@ public class Wait {
             }
             long timeLeft = deadline - System.currentTimeMillis();
             if (result) {
+                LOGGER.debug("Finished waiting for: {}", description);
                 return;
             }
             if (timeLeft <= 0) {

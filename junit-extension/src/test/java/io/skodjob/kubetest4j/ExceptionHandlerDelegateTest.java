@@ -382,6 +382,46 @@ class ExceptionHandlerDelegateTest {
         }
 
         @Test
+        @DisplayName("Should preserve original error in beforeEach when cleanup fails")
+        void shouldPreserveOriginalErrorInBeforeEach() {
+            RuntimeException testException = new RuntimeException("BeforeEach failed");
+            RuntimeException cleanupException = new RuntimeException("Cleanup boom");
+            TestConfig testConfig = createTestConfig(
+                LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            doThrow(cleanupException).when(cleanupCallback)
+                .handleAutomaticCleanup(extensionContext, testConfig);
+
+            Throwable thrown = assertThrows(RuntimeException.class, () ->
+                delegate.handleBeforeEachMethodExecutionException(
+                    extensionContext, testException));
+
+            assertSame(testException, thrown);
+            assertEquals(1, thrown.getSuppressed().length);
+            assertSame(cleanupException, thrown.getSuppressed()[0]);
+        }
+
+        @Test
+        @DisplayName("Should preserve original error in afterAll when cleanup fails")
+        void shouldPreserveOriginalErrorInAfterAll() {
+            RuntimeException testException = new RuntimeException("AfterAll failed");
+            RuntimeException cleanupException = new RuntimeException("Cleanup boom");
+            TestConfig testConfig = createTestConfig(
+                LogCollectionStrategy.ON_FAILURE, CleanupStrategy.AUTOMATIC, false);
+            when(configurationService.getTestConfig(extensionContext)).thenReturn(testConfig);
+            doThrow(cleanupException).when(cleanupCallback)
+                .handleAutomaticCleanup(extensionContext, testConfig);
+
+            Throwable thrown = assertThrows(RuntimeException.class, () ->
+                delegate.handleAfterAllMethodExecutionException(
+                    extensionContext, testException));
+
+            assertSame(testException, thrown);
+            assertEquals(1, thrown.getSuppressed().length);
+            assertSame(cleanupException, thrown.getSuppressed()[0]);
+        }
+
+        @Test
         @DisplayName("Should preserve original error in afterEach when cleanup fails")
         void shouldPreserveOriginalErrorInAfterEach() {
             RuntimeException testException = new RuntimeException("AfterEach failed");
