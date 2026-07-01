@@ -48,6 +48,31 @@ Every feature enhancement should be thoroughly tested. This includes writing bot
 
 Please follow the existing code style and conventions used in the project. This helps to maintain a consistent codebase.
 
+### Release Notes
+
+Each GitHub release **must** include human-readable, categorized release notes — not just the auto-generated list of merged PRs. This is required by the [OpenSSF Best Practices](https://www.bestpractices.dev/en/criteria/0) `release_notes` criterion.
+
+Use the following structure:
+
+```
+## Summary
+One to three sentences describing the overall theme of this release.
+
+### Highlights
+- Notable new features or improvements
+
+### Bug Fixes
+- Bugs resolved in this release
+
+### Dependency Updates
+- Summary of updated dependencies
+
+### Security
+- List any CVEs fixed, or state: "No known CVEs were fixed in this release."
+```
+
+The **Security** section is mandatory. If a release fixes a publicly known vulnerability that already had a CVE assignment, it **must** be listed explicitly ([`release_notes_vulns`](https://www.bestpractices.dev/en/criteria/0#release_notes_vulns) criterion).
+
 ## Additional Resources
 
 - [GitHub Help](https://help.github.com/)

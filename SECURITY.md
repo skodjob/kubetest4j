@@ -38,4 +38,4 @@ We are committed to keeping our users safe and will do our utmost to address all
 - [CVE Details](https://www.cvedetails.com/)
 - [National Vulnerability Database](https://nvd.nist.gov/)
 
-Thank you for helping us keep Test Frame secure!
+Thank you for helping us keep kubetest4j secure!
