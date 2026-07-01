@@ -1,6 +1,7 @@
 # Kubetest4j
 Library for easy testing of Kubernetes deployments and operators using Fabric8 API.
 
+[![OpenSSF Best Practices](https://emea01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fwww.bestpractices.dev%2Fprojects%2F13456%2Fbadge&data=05%7C02%7C%7C7e2c9c1ae5444670fa4108ded77aee64%7C84df9e7fe9f640afb435aaaaaaaaaaaa%7C1%7C0%7C639185120166159973%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=fn4uF2tNajfQNYsy0IGInzpXfLl5uXzu0YNGm7%2BRzz0%3D&reserved=0)](https://emea01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fwww.bestpractices.dev%2Fprojects%2F13456&data=05%7C02%7C%7C7e2c9c1ae5444670fa4108ded77aee64%7C84df9e7fe9f640afb435aaaaaaaaaaaa%7C1%7C0%7C639185120166174050%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=eJxpRDfD5n2MPnnyDyaPpC9s3Ifq0PVm5919uB7Hb1k%3D&reserved=0)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/skodjob/kubetest4j/badge)](https://scorecard.dev/viewer/?uri=github.com/skodjob/kubetest4j)
 [![Build](https://github.com/skodjob/kubetest4j/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/skodjob/kubetest4j/actions/workflows/build.yaml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
