@@ -12,13 +12,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @TestVisualSeparator
 class CertAndKeyBuilderTest {
-    static final String ROOT_CA = "C=COM, L=Boston, O=Example, CN=ExampleRootCA";
-    static final String INTERMEDIATE_CA = "C=COM, L=Boston, O=Example, CN=ExampleIntermediateCA";
-    static final String END_SUBJECT = "C=COM, L=Boston, O=Example, CN=end-app.example.io";
-    static final String APP_SUBJECT = "C=COM, L=Boston, O=Example, CN=app.example.io";
+    static final String ROOT_CA = "C=CZ, L=Boston, O=Example, CN=ExampleRootCA";
+    static final String INTERMEDIATE_CA = "C=CZ, L=Boston, O=Example, CN=ExampleIntermediateCA";
+    static final String END_SUBJECT = "C=CZ, L=Boston, O=Example, CN=end-app.example.io";
+    static final String APP_SUBJECT = "C=CZ, L=Boston, O=Example, CN=app.example.io";
 
-    static final String COMPARE_ROOT_DN = "CN=ExampleRootCA,O=Example,L=Boston,C=COM";
-    static final String COMPARE_INTERMEDIATE_DN = "CN=ExampleIntermediateCA,O=Example,L=Boston,C=COM";
+    static final String COMPARE_ROOT_DN = "CN=ExampleRootCA,O=Example,L=Boston,C=CZ";
+    static final String COMPARE_INTERMEDIATE_DN = "CN=ExampleIntermediateCA,O=Example,L=Boston,C=CZ";
 
     @Test
     void testGenerateCerts() {
