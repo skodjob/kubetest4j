@@ -7,23 +7,49 @@ package io.skodjob.kubetest4j.resources;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.openshift.api.model.operatorhub.v1alpha1.Subscription;
+import io.fabric8.openshift.api.model.operatorhub.v1alpha1.SubscriptionCondition;
 import io.fabric8.openshift.api.model.operatorhub.v1alpha1.SubscriptionList;
+import io.fabric8.openshift.api.model.operatorhub.v1alpha1.SubscriptionStatus;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 
+import java.util.Collection;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Implementation of ResourceType for specific kubernetes resource
  */
 public class SubscriptionType implements ResourceType<Subscription> {
 
+    /**
+     * The set of Subscription status conditions that are known to indicate a
+     * failure/problem when the condition's status is `True`.
+     * 
+     * @see <a href=
+     *      "https://docs.okd.io/latest/operators/admin/olm-status.html#olm-status-conditions_olm-status">Operator
+     *      subscription condition types</a>
+     */
+    private static final Set<String> PROBLEM_CONDITION_TYPES = Set.of(
+            "CatalogSourcesUnhealthy",
+            "InstallPlanMissing",
+            "InstallPlanPending",
+            "InstallPlanFailed",
+            "ResolutionFailed"
+    );
+
     private final MixedOperation<Subscription, SubscriptionList, Resource<Subscription>> client;
+
+    /* test */ SubscriptionType(MixedOperation<Subscription, SubscriptionList, Resource<Subscription>> client) {
+        this.client = client;
+    }
 
     /**
      * Constructor
      */
     public SubscriptionType() {
-        this.client = KubeResourceManager.get().kubeClient().getOpenShiftClient().operatorHub().subscriptions();
+        this(KubeResourceManager.get().kubeClient().getOpenShiftClient().operatorHub().subscriptions());
     }
 
     /**
@@ -92,14 +118,27 @@ public class SubscriptionType implements ResourceType<Subscription> {
     }
 
     /**
-     * Waits for {@link Subscription} to be ready (created/running)
+     * Waits for {@link Subscription} to be ready (created/running). The resource
+     * is considered to be ready when there conditions are present, but none of the
+     * conditions indicates an error or failure.
+     * 
      *
      * @param resource resource
      * @return result of the readiness check
+     * 
+     * @see SubscriptionType#PROBLEM_CONDITION_TYPES
      */
     @Override
     public boolean isReady(Subscription resource) {
-        return resource != null;
+        return Optional.ofNullable(resource)
+                .map(Subscription::getStatus)
+                .map(SubscriptionStatus::getConditions)
+                .filter(Predicate.not(Collection::isEmpty))
+                .map(conditions -> conditions.stream()
+                        .filter(condition -> PROBLEM_CONDITION_TYPES.contains(condition.getType()))
+                        .map(SubscriptionCondition::getStatus)
+                        .noneMatch("True"::equalsIgnoreCase))
+                .orElse(false);
     }
 
     /**

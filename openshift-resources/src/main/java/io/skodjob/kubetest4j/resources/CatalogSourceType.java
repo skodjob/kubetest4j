@@ -8,8 +8,11 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.openshift.api.model.operatorhub.v1alpha1.CatalogSource;
 import io.fabric8.openshift.api.model.operatorhub.v1alpha1.CatalogSourceList;
+import io.fabric8.openshift.api.model.operatorhub.v1alpha1.CatalogSourceStatus;
+import io.fabric8.openshift.api.model.operatorhub.v1alpha1.GRPCConnectionState;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -19,11 +22,15 @@ public class CatalogSourceType implements ResourceType<CatalogSource> {
 
     private final MixedOperation<CatalogSource, CatalogSourceList, Resource<CatalogSource>> client;
 
+    /* test */ CatalogSourceType(MixedOperation<CatalogSource, CatalogSourceList, Resource<CatalogSource>> client) {
+        this.client = client;
+    }
+
     /**
      * Constructor
      */
     public CatalogSourceType() {
-        this.client = KubeResourceManager.get().kubeClient().getOpenShiftClient().operatorHub().catalogSources();
+        this(KubeResourceManager.get().kubeClient().getOpenShiftClient().operatorHub().catalogSources());
     }
 
     /**
@@ -92,14 +99,21 @@ public class CatalogSourceType implements ResourceType<CatalogSource> {
     }
 
     /**
-     * Waits for {@link CatalogSource} to be ready (created/running)
+     * Waits for {@link CatalogSource} to be ready (created/running). The resource
+     * is considered to be ready when the last observed state for the GRPC connection
+     * was "READY".
      *
      * @param resource resource
      * @return result of the readiness check
      */
     @Override
     public boolean isReady(CatalogSource resource) {
-        return resource != null;
+        return Optional.ofNullable(resource)
+                .map(CatalogSource::getStatus)
+                .map(CatalogSourceStatus::getConnectionState)
+                .map(GRPCConnectionState::getLastObservedState)
+                .map("READY"::equalsIgnoreCase)
+                .orElse(false);
     }
 
     /**
