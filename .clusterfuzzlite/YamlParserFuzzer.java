@@ -8,7 +8,7 @@ public class YamlParserFuzzer {
         String yaml = data.consumeRemainingAsString();
         try {
             KubeTestUtils.configFromYaml(yaml, Map.class);
-        } catch (IllegalArgumentException | RuntimeException e) {
+        } catch (RuntimeException e) {
             // Expected for malformed YAML
         }
     }
