@@ -25,7 +25,7 @@ mvn dependency:copy-dependencies \
 
 # Bundle a minimal JDK 21 runtime for the runner container (which only has JDK 17)
 jlink --no-header-files --no-man-pages --strip-debug \
-    --add-modules java.base,java.logging,java.xml,java.naming,java.management \
+    --add-modules ALL-MODULE-PATH \
     --output "$OUT/jdk21"
 
 # Build classpath from all JARs in $OUT + Jazzer API

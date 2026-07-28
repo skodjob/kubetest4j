@@ -4,7 +4,9 @@ on:
     branches:
       - main
 
-permissions: read-all
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   PR:
