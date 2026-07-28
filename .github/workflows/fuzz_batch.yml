@@ -31,3 +31,10 @@ jobs:
           mode: 'batch'
           sanitizer: ${{ matrix.sanitizer }}
           output-sarif: true
+      - name: Upload crash artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: fuzzing-crashes-batch-${{ matrix.sanitizer }}
+          path: out/artifacts
+          retention-days: 30
