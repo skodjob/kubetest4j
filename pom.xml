@@ -88,7 +88,8 @@
         <maven.plugin.plugin.version>3.9.0</maven.plugin.plugin.version>
         <junit.jupiter.version>6.1.2</junit.jupiter.version>
         <maven.surefire.version>3.5.6</maven.surefire.version>
-        <jackson-dataformat-yaml.version>2.22.1</jackson-dataformat-yaml.version>
+        <jackson.version>2.22.1</jackson.version>
+        <netty.version>4.1.136.Final</netty.version>
         <org.eclipse.sisu.version>1.0.1</org.eclipse.sisu.version>
         <bouncycastle.version>1.85</bouncycastle.version>
 
@@ -131,6 +132,20 @@
                 <groupId>io.skodjob.kubetest4j</groupId>
                 <artifactId>junit-extension</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>io.fabric8</groupId>
@@ -177,7 +192,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.dataformat</groupId>
                 <artifactId>jackson-dataformat-yaml</artifactId>
-                <version>${jackson-dataformat-yaml.version}</version>
+                <version>${jackson.version}</version>
             </dependency>
             <!--    Logger      -->
             <dependency>
