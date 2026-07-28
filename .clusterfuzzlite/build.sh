@@ -2,8 +2,8 @@
 
 cd $SRC/kubetest4j
 
-# Build the project JARs (skip tests, checkstyle, spotbugs, javadoc)
-mvn package -DskipTests \
+# Install to local repo so inter-module deps resolve for dependency:copy-dependencies
+mvn install -DskipTests \
     -Dcheckstyle.skip=true \
     -Dspotbugs.skip=true \
     -Dmaven.javadoc.skip=true \
