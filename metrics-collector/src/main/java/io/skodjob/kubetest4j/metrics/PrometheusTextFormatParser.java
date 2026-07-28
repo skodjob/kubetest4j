@@ -41,7 +41,9 @@ public class PrometheusTextFormatParser {
                 if (line.contains("TYPE")) {
                     String[] parts = line.split(" ");
                     // e.g. # TYPE metric_name histogram => "histogram" is at parts[3]
-                    type = parts[3];
+                    if (parts.length >= 4) {
+                        type = parts[3];
+                    }
                 }
                 continue;
             }
@@ -64,7 +66,7 @@ public class PrometheusTextFormatParser {
                 // Standard Prometheus pattern for counters
                 metrics.add(new Counter(name, customLabels, line, value));
 
-            } else if (name.contains("_bucket")) {
+            } else if (name.contains("_bucket") && labels.containsKey("le")) {
                 // It's a bucket line (histogram)
                 if (currentHistogram == null
                     || !currentHistogram.name.equals(name)
@@ -165,7 +167,7 @@ public class PrometheusTextFormatParser {
 
     private static Map<String, String> parseLabels(String labelString) {
         Map<String, String> labels = new HashMap<>();
-        if (labelString.isEmpty()) {
+        if (labelString.length() < 2) {
             return labels;
         }
         // Remove surrounding '{' and '}'
