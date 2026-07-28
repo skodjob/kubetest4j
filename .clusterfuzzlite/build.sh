@@ -23,6 +23,11 @@ mvn dependency:copy-dependencies \
     -DoutputDirectory="$OUT" \
     -q
 
+# Bundle a minimal JDK 21 runtime for the runner container (which only has JDK 17)
+jlink --no-header-files --no-man-pages --strip-debug \
+    --add-modules java.base,java.logging,java.xml,java.naming,java.management \
+    --output "$OUT/jdk21"
+
 # Build classpath from all JARs in $OUT + Jazzer API
 BUILD_CLASSPATH=$(find "$OUT" -maxdepth 1 -name '*.jar' | sort | tr '\n' ':')
 BUILD_CLASSPATH="${BUILD_CLASSPATH}${JAZZER_API_PATH}"
@@ -39,12 +44,12 @@ for fuzzer in $(find "$SRC/kubetest4j/.clusterfuzzlite" -name '*Fuzzer.java'); d
     fuzzer_basename=$(basename -s .java "$fuzzer")
     javac -cp "$BUILD_CLASSPATH" "$fuzzer" -d "$OUT/"
 
-    # Create an execution wrapper
+    # Create an execution wrapper — use bundled JDK 21 for LD_LIBRARY_PATH
     cat > "$OUT/$fuzzer_basename" <<FUZZER_EOF
 #!/bin/sh
 # LLVMFuzzerTestOneInput for fuzzer detection.
 this_dir=\$(dirname "\$0")
-LD_LIBRARY_PATH="$JVM_LD_LIBRARY_PATH":\$this_dir \\
+LD_LIBRARY_PATH=\$this_dir/jdk21/lib/server:\$this_dir/jdk21/lib:\$this_dir \\
 \$this_dir/jazzer_driver \\
     --agent_path=\$this_dir/jazzer_agent_deploy.jar \\
     --cp=${RUNTIME_CLASSPATH} \\
