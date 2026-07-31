@@ -1,0 +1,78 @@
+name: Snyk Security Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snyk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snyk-open-source:
+    name: Snyk Open Source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run Snyk Open Source scan
+        uses: snyk/actions/maven-3-jdk-21@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects --sarif-file-output=snyk-os.sarif
+
+      - name: Upload Open Source SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          sarif_file: snyk-os.sarif
+          category: snyk-open-source
+
+  snyk-code:
+    name: Snyk Code (SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Snyk CLI
+        uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
+
+      - name: Run Snyk Code scan
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk code test --sarif-file-output=snyk-code.sarif
+
+      - name: Upload Code SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
