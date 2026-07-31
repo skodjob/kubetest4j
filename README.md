@@ -8,6 +8,7 @@ Library for easy testing of Kubernetes deployments and operators using Fabric8 A
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=skodjob_kubetest4j&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=skodjob_kubetest4j)
 [![GitHub Release](https://img.shields.io/github/v/release/skodjob/kubetest4j)](https://github.com/skodjob/kubetest4j/releases)
 [![Maven Central Version](https://img.shields.io/maven-central/v/io.skodjob.kubetest4j/kubetest4j)](https://central.sonatype.com/search?q=io.skodjob.kubetest4j)
+[![Known Vulnerabilities](https://snyk.io/test/github/skodjob/kubetest4j/badge.svg)](https://snyk.io/test/github/skodjob/kubetest4j)
 
 ## Key Features
 
