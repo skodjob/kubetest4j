@@ -34,10 +34,11 @@ If consensus cannot be reached, the project lead makes the final decision.
 
 ## Current Maintainers
 
-| Name | GitHub | Role |
-|------|--------|------|
-| <name> | @<github> | Project Lead |
-| <name> | @<github> | Maintainer |
+| Name           | GitHub | Role |
+|----------------|--------|------|
+| David Kornel   | @kornys | Project Lead |
+| Jakub Stejskal | @Frawless | Maintainer |
+| Lukas Kral     | @im-konge | Maintainer |
 
 ## Access Continuity
 
