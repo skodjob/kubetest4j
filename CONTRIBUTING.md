@@ -32,17 +32,45 @@ When you are ready to submit your pull request, please ensure that you:
 - Test your changes thoroughly.
 - Provide a detailed description of your changes in the pull request.
 
-### Testing
+### Developer Certificate of Origin (DCO)
 
-Every feature enhancement should be thoroughly tested. This includes writing both unit tests and integration tests.
+All commits must be signed off to certify that you have the right to
+submit the code under the project's open source license. Add a
+`Signed-off-by` line to your commit message:
 
-1. **Unit Tests**
+    Signed-off-by: Your Name <your.email@example.com>
 
-   Ensure that you write unit tests for any new functionality you add. Place these tests in the appropriate test files within the main project directory. Unit tests should cover individual units of code to ensure they work as expected.
+You can do this automatically with `git commit -s`. A DCO bot checks
+all PRs for sign-off compliance.
 
-2. **Integration Tests**
+### Testing Policy
 
-   Add relevant tests to the `test-examples` module to verify that the new features work correctly within the overall system. Integration tests should ensure that different parts of the application work together as intended.
+All contributions **must** include tests for new functionality and bug fixes.
+This is a requirement, not a suggestion — PRs without adequate tests will
+not be merged.
+
+1. **Unit Tests** (`*Test.java`)
+
+   Every new feature, class, or method must have corresponding unit tests.
+   Place these in the appropriate module's `src/test/java` directory. Use
+   Fabric8 mock client (`@EnableKubernetesMockClient`) for Kubernetes API
+   interactions.
+
+2. **Integration Tests** (`*IT.java`)
+
+   For features that interact with a real cluster, add integration tests
+   to the `test-examples` module. These run against a Kind cluster in CI.
+
+3. **Regression Tests**
+
+   Bug fixes must include a test that reproduces the bug and verifies the
+   fix. At least 50% of bugs fixed must have a corresponding regression
+   test (enforced by maintainer review).
+
+4. **Coverage**
+
+   SonarCloud enforces >80% test coverage on new code. Check coverage
+   locally with `./mvnw verify -P integration` (JaCoCo report).
 
 ### Style Guide
 
