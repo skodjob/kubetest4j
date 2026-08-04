@@ -5,11 +5,15 @@ to change based on community feedback and adopter needs.
 
 ## Near-term (Q3-Q4 2026)
 
-- <list planned features, improvements, or areas of focus>
+- Complete coverage of missing Kubernetes native resource types
+- `@InjectResource` YAML manipulation — allow overriding fields (namespace,
+  labels, annotations, etc.) on resources loaded from YAML files before
+  they are created in the cluster
 
 ## Medium-term (Q1-Q2 2027)
 
-- <longer-term goals>
+- Helm chart support — create and manage Helm releases from tests
+- Kustomize support — apply Kustomize overlays as test resources
 
 ## Ongoing
 
