@@ -82,12 +82,12 @@ This means you can pass configuration directly via Maven:
 | `KUBECONFIG_XXX` | Kubeconfig for additional cluster |
 
 ## Adopters
-* [opendatahub.io](https://github.com/opendatahub-io/opendatahub-operator) operator test suite - [odh-e2e](https://github.com/skodjob/odh-e2e)
 * [strimzi.io](https://github.com/strimzi/strimzi-kafka-operator) Strimzi Kafka operator - [e2e](https://github.com/strimzi/strimzi-kafka-operator/tree/main/systemtest)
 * [strimzi.io](https://github.com/strimzi/kafka-access-operator) Kafka access operator - [e2e](https://github.com/strimzi/kafka-access-operator/tree/main/systemtest)
 * [debezium.io](https://github.com/debezium/debezium-operator) Debezium Operator - [e2e](https://github.com/debezium/debezium-operator/tree/main/systemtests)
 * [streamshub](https://github.com/streamshub) Streams E2E - [e2e](https://github.com/streamshub/streams-e2e)
 * [streamshub](https://github.com/streamshub) Streamshub MCP - [streamshub-mcp](https://github.com/streamshub/streamshub-mcp)
+* [streamshub](https://github.com/streamshub) StreamsHub Console for Apache Kafka® - [console](https://github.com/streamshub/console)
 
 ## Maintainers
 * [David Kornel](https://github.com/kornys) <kornys@outlook.com>
