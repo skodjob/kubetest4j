@@ -50,36 +50,23 @@ All modules are published to Maven Central under `io.skodjob.kubetest4j`.
 | [JUnit Extension](junit-extension/README.md) | Full `@KubernetesTest` reference, annotations, multi-context, log collection |
 | [Log Collector](log-collector/README.md) | Pod log collection configuration and usage |
 | [Metrics Collector](metrics-collector/README.md) | Prometheus metrics scraping |
+| [Resource Types](docs/RESOURCE-TYPES.md) | Built-in K8s/OpenShift ResourceType list, readiness semantics, custom types |
+| [Resource Batches](docs/RESOURCE-BATCH.md) | Batch grouping, LIFO cleanup ordering, `openBatch()` usage |
+| [Configuration Reference](docs/CONFIGURATION.md) | All env vars, system properties, YAML config file, and multi-context setup |
+| [Testing Guide](docs/TESTING.md) | Unit tests, Fabric8 mock client, integration tests, CI checks |
+| [Architecture](ARCHITECTURE.md) | Module structure, key abstractions, threading model, data flow |
 | [Comparison with Alternatives](docs/COMPARISON.md) | How kubetest4j compares to Testcontainers, Fabric8, Arquillian, JKube |
 | [Examples (core)](test-examples/src/test/java/io/skodjob/kubetest4j/test/integration) | Integration test examples using `@ResourceManager` |
 | [Examples (JUnit ext)](junit-extension/src/test/java/io/skodjob/kubetest4j/examples/) | Integration test examples using `@KubernetesTest` |
 
 ## Configuration
 
-Configuration values are resolved in the following order (first match wins):
+See the **[Configuration Reference](docs/CONFIGURATION.md)** for the full variable list, resolution order (env var → system property → YAML file → default), YAML config file format, and multi-cluster setup.
 
-1. **Environment variable** (`export KUBE_URL=...`)
-2. **JVM system property** (`-DKUBE_URL=...` via Maven or JVM args)
-3. **YAML config file** (`config.yaml` in project root, or path set by `ENV_FILE`)
-4. **Default value**
-
-This means you can pass configuration directly via Maven:
+Quick example — pass config directly via Maven:
 ```bash
 ./mvnw test -DKUBE_URL=https://api.my-cluster:6443 -DKUBE_TOKEN=my-token -DCLIENT_TYPE=oc
 ```
-
-### Config variables
-
-| Variable | Description |
-|----------|-------------|
-| `ENV_FILE` | Path to YAML file with configuration values |
-| `KUBE_URL` | URL of the cluster (API URL) |
-| `KUBE_TOKEN` | Token for cluster access |
-| `KUBECONFIG` | Path to kubeconfig (overrides URL/token) |
-| `CLIENT_TYPE` | Switch between `kubectl` or `oc` (default: `kubectl`) |
-| `KUBE_URL_XXX` | URL for additional cluster (suffix like PROD, DEV, TEST) |
-| `KUBE_TOKEN_XXX` | Token for additional cluster |
-| `KUBECONFIG_XXX` | Kubeconfig for additional cluster |
 
 ## Adopters
 * [strimzi.io](https://github.com/strimzi/strimzi-kafka-operator) Strimzi Kafka operator - [e2e](https://github.com/strimzi/strimzi-kafka-operator/tree/main/systemtest)

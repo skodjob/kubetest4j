@@ -121,8 +121,11 @@ class MyTest {
 
 **After (with kubetest4j):**
 ```java
-@KubernetesTest(namespaces = {"test"})
+@KubernetesTest(resourceTypes = {NamespaceType.class})
 class MyTest {
+
+    @ClassNamespace(name = "test")
+    static Namespace testNs;
 
     @InjectKubeClient
     KubeClient client;

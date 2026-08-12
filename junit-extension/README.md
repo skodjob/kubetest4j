@@ -243,6 +243,20 @@ class LogCollectionTest {
 - **`ON_FAILURE`** - Collect logs only when tests fail (default)
 - **`AFTER_EACH`** - Collect logs after each test method (success or failure)
 
+### @MustGather — Custom Log Collection
+
+For custom collection logic (e.g. collecting from dynamic namespaces, calling `oc adm must-gather`, or post-processing logs), use the `@MustGather` annotation with a `MustGatherSupplier` implementation:
+
+```java
+@MustGather(config = MyMustGatherSupplier.class)
+class MyTest {
+    @Test
+    void someTest() { ... }
+}
+```
+
+`MustGatherSupplier.saveKubernetesState(ExtensionContext context)` is called on any test failure, including lifecycle failures. See the [log-collector README](../log-collector/README.md#using-mustgather-with-logcollector) for a full implementation example.
+
 ## Annotations Reference
 
 ### @KubernetesTest

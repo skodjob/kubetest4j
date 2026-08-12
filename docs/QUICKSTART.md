@@ -238,21 +238,7 @@ For OpenShift-specific resources (OLM Subscriptions, CatalogSources, etc.):
 ### Configuration
 
 Configure cluster access via environment variables, JVM system properties (`-D`), or a YAML config file.
-Values are resolved in order: **env variable > system property > YAML config > default**.
-
-| Variable | Description |
-|----------|-------------|
-| `KUBE_URL` | Kubernetes API server URL |
-| `KUBE_TOKEN` | Authentication token |
-| `KUBECONFIG` | Path to kubeconfig file (overrides URL/token) |
-| `CLIENT_TYPE` | `kubectl` or `oc` (default: `kubectl`) |
-
-For multi-cluster testing, append a suffix: `KUBE_URL_STAGING`, `KUBE_TOKEN_STAGING`, etc.
-
-You can pass any of these as Maven system properties:
-```bash
-./mvnw test -DKUBE_URL=https://api.my-cluster:6443 -DKUBE_TOKEN=my-token
-```
+See the **[Configuration Reference](CONFIGURATION.md)** for the full variable list and multi-cluster setup.
 
 ## Snapshot Configuration
 

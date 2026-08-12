@@ -7,9 +7,9 @@ it collects from.
 
 ## Prerequisites
 
-- Java 17 and higher
+- Java 21+
 - Access to a Kubernetes cluster
-- Kubernetes Client and Command Line Tools (kubectl) setup in your Java environment.
+- kubectl configured and pointing to your cluster
 
 ## Installation
 
