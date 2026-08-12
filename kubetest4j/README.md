@@ -48,27 +48,7 @@ class MyTest {
 }
 ```
 
-### Disabling Automatic Cleanup
-
-```java
-@ResourceManager(cleanResources = false)
-@TestVisualSeparator
-class ManualCleanupTest {
-    // Resources will NOT be deleted after tests
-    // Use KubeResourceManager.get().deleteResource(...) explicitly
-}
-```
-
-### Async vs Sync Deletion
-
-By default, resources are deleted asynchronously for faster cleanup. Disable this if you need ordered deletion:
-
-```java
-@ResourceManager(asyncDeletion = false)
-class OrderedCleanupTest {
-    // Resources are deleted synchronously in reverse creation order
-}
-```
+For cleanup options (disabling automatic cleanup, async vs synchronous deletion, manual `deleteResources()` calls, and `openBatch()` grouping), see **[Resource Batches](../docs/RESOURCE-BATCH.md)**.
 
 ## Clients
 
@@ -87,7 +67,7 @@ KubeResourceManager.get().kubeClient().getClient()
 KubeResourceManager.get().kubeCmdClient().exec("get", "pods", "-n", "test");
 ```
 
-Set the client type via `CLIENT_TYPE` environment variable (`kubectl` or `oc`).
+Set the client type via `CLIENT_TYPE` environment variable. For all connection variables, multi-context configuration, and YAML config file format, see the **[Configuration Reference](../docs/CONFIGURATION.md)**.
 
 ## Multi-Context Cluster Support
 
@@ -103,16 +83,10 @@ class MultiContextTest {
 
     @Test
     void testMethod() {
-        // Default context
-        Namespace ns = new NamespaceBuilder()
-            .withNewMetadata().withName("test").endMetadata().build();
-        KubeResourceManager.get().createResourceWithWait(ns);
+        KubeResourceManager.get().createResourceWithWait(defaultNamespace);
 
-        // Temporarily switch to prod context
         try (var ctx = KubeResourceManager.get().useContext("prod")) {
-            Namespace prodNs = new NamespaceBuilder()
-                .withNewMetadata().withName("test-prod").endMetadata().build();
-            KubeResourceManager.get().createResourceWithWait(prodNs);
+            KubeResourceManager.get().createResourceWithWait(prodNamespace);
         }
         // Automatically returns to previous context
     }
@@ -141,136 +115,23 @@ class MultiContextTest {
 }
 ```
 
-Configure additional contexts via environment variables or JVM system properties (`-D`).
-Values are resolved in order: **env variable > system property (`-D`) > YAML config file > default**.
-
-```bash
-# As environment variables
-export KUBE_URL=https://api.default:6443
-export KUBE_TOKEN=default-token
-
-# Or as Maven system properties
-./mvnw test -DKUBE_URL=https://api.default:6443 -DKUBE_TOKEN=default-token
-
-# Additional contexts (use any suffix)
-export KUBE_URL_PROD=https://api.prod:6443
-export KUBE_TOKEN_PROD=prod-token
-export KUBECONFIG_STAGE=/path/to/stage.kubeconfig
-```
+Configure additional contexts via environment variables, e.g. `KUBE_URL_PROD` / `KUBE_TOKEN_PROD` or `KUBECONFIG_PROD`. See the **[Configuration Reference](../docs/CONFIGURATION.md)** for the full multi-context setup.
 
 ## ResourceType Registration
 
-ResourceTypes teach `KubeResourceManager` how to handle specific Kubernetes resources - how to create, update, delete, and check readiness.
-
-### Using Built-in ResourceTypes
-
-Add the `kubernetes-resources` (and optionally `openshift-resources`) dependency:
-
-```xml
-<dependency>
-    <groupId>io.skodjob.kubetest4j</groupId>
-    <artifactId>kubernetes-resources</artifactId>
-    <version>{version}</version>
-    <scope>test</scope>
-</dependency>
-```
-
-Then register the types your tests need:
+`ResourceType<T>` implementations teach `KubeResourceManager` how to create, update, delete, and check readiness for a specific resource kind. Register them once before any test creates resources:
 
 ```java
 KubeResourceManager.get().setResourceTypes(
     new NamespaceType(),
     new DeploymentType(),
-    new ServiceType(),
-    new JobType(),
-    new NetworkPolicyType()
+    new ServiceType()
 );
 ```
 
-If a resource is **not** registered, it is handled as a generic Kubernetes resource with no special readiness check.
+Resources without a registered type are handled as generic Kubernetes objects with no readiness check.
 
-### Available Built-in ResourceTypes
-
-**kubernetes-resources:** ClusterRole, ClusterRoleBinding, ConfigMap, CustomResourceDefinition, Deployment, Job, Lease, Namespace, NetworkPolicy, Role, RoleBinding, Secret, Service, ServiceAccount, ValidatingWebhookConfiguration
-
-**openshift-resources:** BuildConfig, CatalogSource, ImageDigestMirrorSet, ImageStream, InstallPlan, OperatorGroup, Subscription
-
-### Implementing Custom ResourceTypes
-
-For custom resources (e.g., your operator's CRDs), implement the `ResourceType<T>` interface:
-
-```java
-public class MyCustomResourceType implements ResourceType<MyCustomResource> {
-
-    private final MixedOperation<MyCustomResource, MyCustomResourceList, Resource<MyCustomResource>> client;
-
-    public MyCustomResourceType() {
-        this.client = KubeResourceManager.get().kubeClient()
-            .getClient().resources(MyCustomResource.class, MyCustomResourceList.class);
-    }
-
-    @Override
-    public String getKind() {
-        return "MyCustomResource";
-    }
-
-    @Override
-    public Long getTimeoutForResourceReadiness() {
-        return KubeTestConstants.GLOBAL_TIMEOUT;
-    }
-
-    @Override
-    public MixedOperation<?, ?, ?> getClient() {
-        return client;
-    }
-
-    @Override
-    public void create(MyCustomResource resource) {
-        client.inNamespace(resource.getMetadata().getNamespace())
-            .resource(resource).create();
-    }
-
-    @Override
-    public void update(MyCustomResource resource) {
-        client.inNamespace(resource.getMetadata().getNamespace())
-            .resource(resource).update();
-    }
-
-    @Override
-    public void delete(MyCustomResource resource) {
-        client.inNamespace(resource.getMetadata().getNamespace())
-            .withName(resource.getMetadata().getName()).delete();
-    }
-
-    @Override
-    public void replace(MyCustomResource resource, Consumer<MyCustomResource> editor) {
-        MyCustomResource toBeUpdated = client
-            .inNamespace(resource.getMetadata().getNamespace())
-            .withName(resource.getMetadata().getName()).get();
-        editor.accept(toBeUpdated);
-        update(toBeUpdated);
-    }
-
-    @Override
-    public boolean isReady(MyCustomResource resource) {
-        // Implement your readiness check
-        return client.resource(resource).isReady();
-    }
-
-    @Override
-    public boolean isDeleted(MyCustomResource resource) {
-        return resource == null;
-    }
-}
-```
-
-Register it:
-```java
-KubeResourceManager.get().setResourceTypes(
-    new NamespaceType(),
-    new MyCustomResourceType()
-);
-```
+See **[Resource Types](../docs/RESOURCE-TYPES.md)** for the full list of built-in types (kubernetes-resources and openshift-resources modules), readiness semantics for each, and a complete guide to implementing custom types for operator CRDs.
 
 ## Resource Callbacks
 
@@ -313,6 +174,132 @@ The core module includes utilities for common Kubernetes operations:
 | [LoggerUtils](src/main/java/io/skodjob/kubetest4j/utils/LoggerUtils.java) | Resource logging, visual separators |
 | [Wait](src/main/java/io/skodjob/kubetest4j/wait/Wait.java) | Polling-based wait: `Wait.until(description, pollMs, timeoutMs, condition)` |
 | [Exec](src/main/java/io/skodjob/kubetest4j/executor/Exec.java) | Command execution with timeout support |
+
+### Wait
+
+`Wait.until` polls a `BooleanSupplier` at a fixed interval until it returns `true` or the timeout is reached. On timeout it throws `WaitException`.
+
+```java
+// Wait up to 5 minutes, polling every 5 seconds
+Wait.until(
+    "my-deployment to have all replicas available",
+    KubeTestConstants.GLOBAL_POLL_INTERVAL_SHORT,   // 5 s
+    KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM,         // 5 min
+    () -> {
+        Deployment d = KubeResourceManager.get().kubeClient().getClient()
+            .apps().deployments().inNamespace("my-ns").withName("my-app").get();
+        return d != null
+            && d.getStatus() != null
+            && Integer.valueOf(3).equals(d.getStatus().getAvailableReplicas());
+    }
+);
+```
+
+With an optional `onTimeout` callback that runs before the exception is thrown:
+
+```java
+Wait.until(
+    "custom-resource to become Ready",
+    KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC,
+    KubeTestConstants.GLOBAL_TIMEOUT,
+    () -> myResource.getStatus().getPhase().equals("Ready"),
+    () -> LOGGER.error("Timed out. Current status: {}",
+        KubeResourceManager.get().kubeClient().getClient()
+            .resource(myResource).get().getStatus())
+);
+```
+
+For non-blocking waits, use `Wait.untilAsync`, which returns a `CompletableFuture<Void>`:
+
+```java
+CompletableFuture<Void> future = Wait.untilAsync(
+    "pod to be Running",
+    KubeTestConstants.GLOBAL_POLL_INTERVAL_1_SEC,
+    KubeTestConstants.GLOBAL_TIMEOUT_SHORT,
+    () -> "Running".equals(
+        KubeResourceManager.get().kubeClient().getClient()
+            .pods().inNamespace("my-ns").withName("my-pod").get()
+            .getStatus().getPhase())
+);
+future.get(); // block when you need the result
+```
+
+### Exec
+
+`ExecBuilder` runs an OS-level command and returns an `ExecResult` with stdout, stderr, and the exit code.
+
+```java
+// Run a command and capture output
+ExecResult result = new ExecBuilder()
+    .withCommand("kubectl", "get", "pods", "-n", "my-ns", "-o", "name")
+    .timeout(30)        // seconds
+    .logToOutput(true)  // stream output to the SLF4J logger as it runs
+    .throwErrors(true)  // throw KubeClusterException on non-zero exit code
+    .exec();
+
+String podList = result.out();
+int exitCode   = result.returnCode();
+```
+
+Inspect the result without throwing on failure:
+
+```java
+ExecResult result = new ExecBuilder()
+    .withCommand("helm", "status", "my-release", "-n", "my-ns")
+    .timeout(15)
+    .throwErrors(false)
+    .exec();
+
+if (result.returnCode() != 0) {
+    LOGGER.warn("Helm release not found: {}", result.err());
+}
+```
+
+### PodUtils
+
+```java
+// Wait for all pods in a namespace to be Ready or Succeeded
+PodUtils.waitForPodsReady("my-ns", true, () ->
+    LOGGER.error("Pods still not ready — dumping pod list: {}",
+        KubeResourceManager.get().kubeClient().getClient()
+            .pods().inNamespace("my-ns").list().getItems())
+);
+
+// Wait for exactly 3 pods matching a label selector to be ready
+LabelSelector selector = new LabelSelectorBuilder()
+    .withMatchLabels(Map.of("app", "my-operator")).build();
+PodUtils.waitForPodsReady("my-ns", selector, 3, true, () -> {});
+
+// Capture pod UIDs before an operation, then verify rollout replaced them
+Map<String, String> snapshot = PodUtils.podSnapshot("my-ns", selector);
+// ... trigger rolling update ...
+Wait.until("pods to be replaced", KubeTestConstants.GLOBAL_POLL_INTERVAL_SHORT,
+    KubeTestConstants.GLOBAL_TIMEOUT,
+    () -> {
+        Map<String, String> current = PodUtils.podSnapshot("my-ns", selector);
+        return !current.equals(snapshot);
+    }
+);
+```
+
+### JobUtils
+
+```java
+// Wait for a Job to succeed (timeout: 5 minutes)
+JobUtils.waitForJobSuccess("my-ns", "db-migrate", KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
+
+// Wait for a Job to fail (useful for negative testing)
+JobUtils.waitForJobFailure("my-ns", "bad-job", KubeTestConstants.GLOBAL_TIMEOUT_SHORT);
+
+// Wait until the Job pod's log contains an expected message
+JobUtils.waitForJobContainingLogMessage("my-ns", "init-job", "Migration complete");
+
+// Log the full Job status and pod conditions (useful on test failure)
+JobUtils.logCurrentJobStatus("my-ns", "db-migrate");
+
+// Delete a Job and wait for its pod to disappear
+JobUtils.deleteJobWithWait("my-ns", "db-migrate");
+```
 
 ## Constants
 

@@ -12,9 +12,9 @@ facilitating dynamic integration across different Kubernetes setups.
 
 ## Prerequisites
 
-- Java 17 or higher.
+- Java 21+
 - Access to a Kubernetes cluster with configured pods.
-- Kubernetes Client and Command Line Tools (kubectl) setup in your Java environment.
+- kubectl configured and pointing to your cluster
 
 ## Installation
 
