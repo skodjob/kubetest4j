@@ -26,12 +26,16 @@ class IngressTypeTest {
 
     @BeforeEach
     void setup() {
-        target = new IngressType(kubernetesClient.network().v1().ingresses());
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        target = new IngressType();
     }
 
     @Test
-    void testMetadata() {
+    void testConstructorsAndMetadata() {
+        IngressType custom = new IngressType(kubernetesClient.network().v1().ingresses());
         assertEquals("Ingress", target.getKind());
+        assertEquals("Ingress", custom.getKind());
+        assertNotNull(target.getTimeoutForResourceReadiness());
         assertNotNull(target.getClient());
     }
 
@@ -50,7 +54,18 @@ class IngressTypeTest {
             .inNamespace("default").withName("test-ingress").get();
         assertNotNull(created);
 
-        target.replace(resource, ing -> ing.getMetadata().getLabels());
+        resource.getMetadata().getLabels().put("k1", "v1");
+        target.update(resource);
+
+        Ingress updated = kubernetesClient.network().v1().ingresses()
+            .inNamespace("default").withName("test-ingress").get();
+        assertEquals("v1", updated.getMetadata().getLabels().get("k1"));
+
+        target.replace(resource, ing -> ing.getMetadata().getLabels().put("k2", "v2"));
+
+        Ingress replaced = kubernetesClient.network().v1().ingresses()
+            .inNamespace("default").withName("test-ingress").get();
+        assertEquals("v2", replaced.getMetadata().getLabels().get("k2"));
 
         target.delete(resource);
 

@@ -26,12 +26,16 @@ class HorizontalPodAutoscalerTypeTest {
 
     @BeforeEach
     void setup() {
-        target = new HorizontalPodAutoscalerType(kubernetesClient.autoscaling().v2().horizontalPodAutoscalers());
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        target = new HorizontalPodAutoscalerType();
     }
 
     @Test
-    void testMetadata() {
+    void testConstructorsAndMetadata() {
+        HorizontalPodAutoscalerType custom = new HorizontalPodAutoscalerType(kubernetesClient
+            .autoscaling().v2().horizontalPodAutoscalers());
         assertEquals("HorizontalPodAutoscaler", target.getKind());
+        assertEquals("HorizontalPodAutoscaler", custom.getKind());
         assertNotNull(target.getTimeoutForResourceReadiness());
         assertNotNull(target.getClient());
     }
@@ -54,11 +58,18 @@ class HorizontalPodAutoscalerTypeTest {
             .inNamespace("default").withName("test-hpa").get();
         assertNotNull(created);
 
-        target.replace(resource, hpa -> hpa.getSpec().setMaxReplicas(10));
+        resource.getSpec().setMaxReplicas(8);
+        target.update(resource);
 
         HorizontalPodAutoscaler updated = kubernetesClient.autoscaling().v2().horizontalPodAutoscalers()
             .inNamespace("default").withName("test-hpa").get();
-        assertEquals(10, updated.getSpec().getMaxReplicas());
+        assertEquals(8, updated.getSpec().getMaxReplicas());
+
+        target.replace(resource, hpa -> hpa.getSpec().setMaxReplicas(10));
+
+        HorizontalPodAutoscaler replaced = kubernetesClient.autoscaling().v2().horizontalPodAutoscalers()
+            .inNamespace("default").withName("test-hpa").get();
+        assertEquals(10, replaced.getSpec().getMaxReplicas());
 
         target.delete(resource);
 

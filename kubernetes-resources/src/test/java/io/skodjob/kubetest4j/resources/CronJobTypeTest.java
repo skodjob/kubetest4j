@@ -26,12 +26,15 @@ class CronJobTypeTest {
 
     @BeforeEach
     void setup() {
-        target = new CronJobType(kubernetesClient.batch().v1().cronjobs());
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        target = new CronJobType();
     }
 
     @Test
-    void testMetadata() {
+    void testConstructorsAndMetadata() {
+        CronJobType custom = new CronJobType(kubernetesClient.batch().v1().cronjobs());
         assertEquals("CronJob", target.getKind());
+        assertEquals("CronJob", custom.getKind());
         assertNotNull(target.getTimeoutForResourceReadiness());
         assertNotNull(target.getClient());
     }
@@ -50,26 +53,34 @@ class CronJobTypeTest {
 
         target.create(resource);
 
-        CronJob created = kubernetesClient.batch().v1().cronjobs().inNamespace("default")
-            .withName("test-cronjob").get();
+        CronJob created = kubernetesClient.batch().v1().cronjobs()
+            .inNamespace("default").withName("test-cronjob").get();
         assertNotNull(created);
+
+        resource.getSpec().setSchedule("0 * * * *");
+        target.update(resource);
+
+        CronJob updated = kubernetesClient.batch().v1().cronjobs()
+            .inNamespace("default").withName("test-cronjob").get();
+        assertEquals("0 * * * *", updated.getSpec().getSchedule());
 
         target.replace(resource, cj -> cj.getSpec().setSchedule("*/10 * * * *"));
 
-        CronJob updated = kubernetesClient.batch().v1().cronjobs().inNamespace("default")
-            .withName("test-cronjob").get();
-        assertEquals("*/10 * * * *", updated.getSpec().getSchedule());
+        CronJob replaced = kubernetesClient.batch().v1().cronjobs()
+            .inNamespace("default").withName("test-cronjob").get();
+        assertEquals("*/10 * * * *", replaced.getSpec().getSchedule());
 
         target.delete(resource);
 
-        CronJob deleted = kubernetesClient.batch().v1().cronjobs().inNamespace("default")
-            .withName("test-cronjob").get();
+        CronJob deleted = kubernetesClient.batch().v1().cronjobs()
+            .inNamespace("default").withName("test-cronjob").get();
         assertNull(deleted);
     }
 
     @Test
     void testIsReady() {
         assertTrue(target.isReady(new CronJob()));
+        assertFalse(target.isReady(null));
     }
 
     @Test

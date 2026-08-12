@@ -26,12 +26,15 @@ class DaemonSetTypeTest {
 
     @BeforeEach
     void setup() {
-        target = new DaemonSetType(kubernetesClient.apps().daemonSets());
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        target = new DaemonSetType();
     }
 
     @Test
-    void testMetadata() {
+    void testConstructorsAndMetadata() {
+        DaemonSetType custom = new DaemonSetType(kubernetesClient.apps().daemonSets());
         assertEquals("DaemonSet", target.getKind());
+        assertEquals("DaemonSet", custom.getKind());
         assertNotNull(target.getTimeoutForResourceReadiness());
         assertNotNull(target.getClient());
     }
@@ -50,15 +53,32 @@ class DaemonSetTypeTest {
         DaemonSet created = kubernetesClient.apps().daemonSets().inNamespace("default").withName("test-ds").get();
         assertNotNull(created);
 
-        target.replace(resource, ds -> ds.getMetadata().getLabels().put("key", "value"));
+        resource.getMetadata().getLabels().put("k1", "v1");
+        target.update(resource);
 
         DaemonSet updated = kubernetesClient.apps().daemonSets().inNamespace("default").withName("test-ds").get();
-        assertEquals("value", updated.getMetadata().getLabels().get("key"));
+        assertEquals("v1", updated.getMetadata().getLabels().get("k1"));
+
+        target.replace(resource, ds -> ds.getMetadata().getLabels().put("k2", "v2"));
+
+        DaemonSet replaced = kubernetesClient.apps().daemonSets().inNamespace("default").withName("test-ds").get();
+        assertEquals("v2", replaced.getMetadata().getLabels().get("k2"));
 
         target.delete(resource);
 
         DaemonSet deleted = kubernetesClient.apps().daemonSets().inNamespace("default").withName("test-ds").get();
         assertNull(deleted);
+    }
+
+    @Test
+    void testIsReady() {
+        DaemonSet resource = new DaemonSetBuilder()
+            .withNewMetadata()
+                .withName("test-ds")
+                .withNamespace("default")
+            .endMetadata()
+            .build();
+        assertFalse(target.isReady(resource));
     }
 
     @Test

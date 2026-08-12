@@ -110,7 +110,7 @@ public class CronJobType implements ResourceType<CronJob> {
      */
     @Override
     public boolean isReady(CronJob resource) {
-        return true;
+        return resource != null;
     }
 
     /**

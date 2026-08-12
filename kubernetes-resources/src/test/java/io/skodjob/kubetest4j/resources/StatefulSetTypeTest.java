@@ -26,12 +26,15 @@ class StatefulSetTypeTest {
 
     @BeforeEach
     void setup() {
-        target = new StatefulSetType(kubernetesClient.apps().statefulSets());
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        target = new StatefulSetType();
     }
 
     @Test
-    void testMetadata() {
+    void testConstructorsAndMetadata() {
+        StatefulSetType custom = new StatefulSetType(kubernetesClient.apps().statefulSets());
         assertEquals("StatefulSet", target.getKind());
+        assertEquals("StatefulSet", custom.getKind());
         assertNotNull(target.getTimeoutForResourceReadiness());
         assertNotNull(target.getClient());
     }
@@ -53,15 +56,32 @@ class StatefulSetTypeTest {
         StatefulSet created = kubernetesClient.apps().statefulSets().inNamespace("default").withName("test-sts").get();
         assertNotNull(created);
 
-        target.replace(resource, sts -> sts.getSpec().setReplicas(2));
+        resource.getSpec().setReplicas(3);
+        target.update(resource);
 
         StatefulSet updated = kubernetesClient.apps().statefulSets().inNamespace("default").withName("test-sts").get();
-        assertEquals(2, updated.getSpec().getReplicas());
+        assertEquals(3, updated.getSpec().getReplicas());
+
+        target.replace(resource, sts -> sts.getSpec().setReplicas(2));
+
+        StatefulSet replaced = kubernetesClient.apps().statefulSets().inNamespace("default").withName("test-sts").get();
+        assertEquals(2, replaced.getSpec().getReplicas());
 
         target.delete(resource);
 
         StatefulSet deleted = kubernetesClient.apps().statefulSets().inNamespace("default").withName("test-sts").get();
         assertNull(deleted);
+    }
+
+    @Test
+    void testIsReady() {
+        StatefulSet resource = new StatefulSetBuilder()
+            .withNewMetadata()
+                .withName("test-sts")
+                .withNamespace("default")
+            .endMetadata()
+            .build();
+        assertFalse(target.isReady(resource));
     }
 
     @Test

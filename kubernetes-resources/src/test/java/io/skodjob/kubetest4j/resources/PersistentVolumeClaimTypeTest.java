@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimStatusBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 
@@ -26,54 +27,17 @@ class PersistentVolumeClaimTypeTest {
 
     @BeforeEach
     void setup() {
-        target = new PersistentVolumeClaimType(kubernetesClient.persistentVolumeClaims());
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        target = new PersistentVolumeClaimType();
     }
 
     @Test
-    void testMetadata() {
+    void testConstructorsAndMetadata() {
+        PersistentVolumeClaimType custom = new PersistentVolumeClaimType(kubernetesClient.persistentVolumeClaims());
         assertEquals("PersistentVolumeClaim", target.getKind());
+        assertEquals("PersistentVolumeClaim", custom.getKind());
+        assertNotNull(target.getTimeoutForResourceReadiness());
         assertNotNull(target.getClient());
-    }
-
-    @Test
-    void testIsReadyBound() {
-        PersistentVolumeClaim pvc = new PersistentVolumeClaimBuilder()
-            .withNewMetadata()
-                .withName("test-pvc")
-                .withNamespace("default")
-            .endMetadata()
-            .withNewStatus()
-                .withPhase("Bound")
-            .endStatus()
-            .build();
-
-        assertTrue(target.isReady(pvc));
-    }
-
-    @Test
-    void testIsReadyPending() {
-        PersistentVolumeClaim pvc = new PersistentVolumeClaimBuilder()
-            .withNewMetadata()
-                .withName("test-pvc")
-                .withNamespace("default")
-            .endMetadata()
-            .withNewStatus()
-                .withPhase("Pending")
-            .endStatus()
-            .build();
-
-        assertFalse(target.isReady(pvc));
-    }
-
-    @Test
-    void testIsReadyNull() {
-        assertFalse(target.isReady(null));
-    }
-
-    @Test
-    void testIsDeleted() {
-        assertTrue(target.isDeleted(null));
-        assertFalse(target.isDeleted(new PersistentVolumeClaim()));
     }
 
     @Test
@@ -83,11 +47,6 @@ class PersistentVolumeClaimTypeTest {
                 .withName("test-pvc")
                 .withNamespace("default")
             .endMetadata()
-            .withNewSpec()
-                .withNewResources()
-                    .addToRequests("storage", new io.fabric8.kubernetes.api.model.Quantity("1Gi"))
-                .endResources()
-            .endSpec()
             .build();
 
         target.create(resource);
@@ -96,18 +55,73 @@ class PersistentVolumeClaimTypeTest {
             .inNamespace("default").withName("test-pvc").get();
         assertNotNull(created);
 
-        target.replace(resource, pvc -> pvc.getSpec().getResources()
-            .setRequests(java.util.Map.of("storage",
-                new io.fabric8.kubernetes.api.model.Quantity("2Gi"))));
+        resource.getMetadata().getLabels().put("k1", "v1");
+        target.update(resource);
 
         PersistentVolumeClaim updated = kubernetesClient.persistentVolumeClaims()
             .inNamespace("default").withName("test-pvc").get();
-        assertEquals("2Gi", updated.getSpec().getResources().getRequests().get("storage").toString());
+        assertEquals("v1", updated.getMetadata().getLabels().get("k1"));
+
+        target.replace(resource, pvc -> pvc.getMetadata().getLabels().put("k2", "v2"));
+
+        PersistentVolumeClaim replaced = kubernetesClient.persistentVolumeClaims()
+            .inNamespace("default").withName("test-pvc").get();
+        assertEquals("v2", replaced.getMetadata().getLabels().get("k2"));
 
         target.delete(resource);
 
         PersistentVolumeClaim deleted = kubernetesClient.persistentVolumeClaims()
             .inNamespace("default").withName("test-pvc").get();
         assertNull(deleted);
+    }
+
+    @Test
+    void testIsReadyBound() {
+        PersistentVolumeClaim resource = new PersistentVolumeClaimBuilder()
+            .withNewMetadata()
+                .withName("test-pvc")
+                .withNamespace("default")
+            .endMetadata()
+            .build();
+
+        target.create(resource);
+
+        PersistentVolumeClaim created = kubernetesClient.persistentVolumeClaims()
+            .inNamespace("default").withName("test-pvc").get();
+        created.setStatus(new PersistentVolumeClaimStatusBuilder().withPhase("Bound").build());
+        target.update(created);
+
+        assertTrue(target.isReady(created));
+    }
+
+    @Test
+    void testIsReadyPending() {
+        PersistentVolumeClaim resource = new PersistentVolumeClaimBuilder()
+            .withNewMetadata()
+                .withName("test-pvc-pending")
+                .withNamespace("default")
+            .endMetadata()
+            .build();
+
+        target.create(resource);
+
+        PersistentVolumeClaim created = kubernetesClient.persistentVolumeClaims()
+            .inNamespace("default").withName("test-pvc-pending").get();
+        created.setStatus(new PersistentVolumeClaimStatusBuilder().withPhase("Pending").build());
+        target.update(created);
+
+        assertFalse(target.isReady(created));
+    }
+
+    @Test
+    void testIsReadyNullAndEmpty() {
+        assertFalse(target.isReady(null));
+        assertFalse(target.isReady(new PersistentVolumeClaim()));
+    }
+
+    @Test
+    void testIsDeleted() {
+        assertTrue(target.isDeleted(null));
+        assertFalse(target.isDeleted(new PersistentVolumeClaim()));
     }
 }
