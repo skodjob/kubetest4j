@@ -23,7 +23,16 @@ public class NetworkPolicyType implements ResourceType<NetworkPolicy> {
      * Constructor
      */
     public NetworkPolicyType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient().network().networkPolicies();
+        this(KubeResourceManager.get().kubeClient().getClient().network().networkPolicies());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    NetworkPolicyType(MixedOperation<NetworkPolicy, NetworkPolicyList, Resource<NetworkPolicy>> client) {
+        this.client = client;
     }
 
     /**

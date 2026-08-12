@@ -89,8 +89,22 @@
             <artifactId>kubernetes-model-networking</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-model-autoscaling</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.skodjob.kubetest4j</groupId>
             <artifactId>kubetest4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-server-mock</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
     <build>

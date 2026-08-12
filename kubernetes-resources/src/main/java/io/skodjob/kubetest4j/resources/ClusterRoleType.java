@@ -23,7 +23,16 @@ public class ClusterRoleType implements ResourceType<ClusterRole> {
      * Constructor
      */
     public ClusterRoleType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient().rbac().clusterRoles();
+        this(KubeResourceManager.get().kubeClient().getClient().rbac().clusterRoles());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    ClusterRoleType(NonNamespaceOperation<ClusterRole, ClusterRoleList, Resource<ClusterRole>> client) {
+        this.client = client;
     }
 
     /**

@@ -25,10 +25,20 @@ public class ValidatingWebhookConfigurationType implements ResourceType<Validati
      * Constructor
      */
     public ValidatingWebhookConfigurationType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient()
+        this(KubeResourceManager.get().kubeClient().getClient()
             .admissionRegistration()
             .v1()
-            .validatingWebhookConfigurations();
+            .validatingWebhookConfigurations());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    ValidatingWebhookConfigurationType(NonNamespaceOperation<ValidatingWebhookConfiguration,
+            ValidatingWebhookConfigurationList, Resource<ValidatingWebhookConfiguration>> client) {
+        this.client = client;
     }
 
     /**

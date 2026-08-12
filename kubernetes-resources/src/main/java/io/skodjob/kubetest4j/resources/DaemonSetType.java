@@ -6,25 +6,25 @@ package io.skodjob.kubetest4j.resources;
 
 import java.util.function.Consumer;
 
-import io.fabric8.kubernetes.api.model.apps.Deployment;
-import io.fabric8.kubernetes.api.model.apps.DeploymentList;
+import io.fabric8.kubernetes.api.model.apps.DaemonSet;
+import io.fabric8.kubernetes.api.model.apps.DaemonSetList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
-import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
+import io.fabric8.kubernetes.client.dsl.Resource;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 
 /**
- * Implementation of ResourceType for specific kubernetes resource
+ * Implementation of ResourceType for DaemonSet resource
  */
-public class DeploymentType implements ResourceType<Deployment> {
+public class DaemonSetType implements ResourceType<DaemonSet> {
 
-    private final MixedOperation<Deployment, DeploymentList, RollableScalableResource<Deployment>> client;
+    private final MixedOperation<DaemonSet, DaemonSetList, Resource<DaemonSet>> client;
 
     /**
      * Constructor
      */
-    public DeploymentType() {
-        this(KubeResourceManager.get().kubeClient().getClient().apps().deployments());
+    public DaemonSetType() {
+        this(KubeResourceManager.get().kubeClient().getClient().apps().daemonSets());
     }
 
     /**
@@ -32,7 +32,7 @@ public class DeploymentType implements ResourceType<Deployment> {
      *
      * @param client client
      */
-    DeploymentType(MixedOperation<Deployment, DeploymentList, RollableScalableResource<Deployment>> client) {
+    DaemonSetType(MixedOperation<DaemonSet, DaemonSetList, Resource<DaemonSet>> client) {
         this.client = client;
     }
 
@@ -43,7 +43,7 @@ public class DeploymentType implements ResourceType<Deployment> {
      */
     @Override
     public String getKind() {
-        return "Deployment";
+        return "DaemonSet";
     }
 
     /**
@@ -57,7 +57,7 @@ public class DeploymentType implements ResourceType<Deployment> {
     }
 
     /**
-     * Get specific client for resoruce
+     * Get specific client for resource
      *
      * @return specific client
      */
@@ -67,69 +67,69 @@ public class DeploymentType implements ResourceType<Deployment> {
     }
 
     /**
-     * Creates specific {@link Deployment} resource
+     * Creates specific {@link DaemonSet} resource
      *
-     * @param resource {@link Deployment} resource
+     * @param resource {@link DaemonSet} resource
      */
     @Override
-    public void create(Deployment resource) {
+    public void create(DaemonSet resource) {
         client.inNamespace(resource.getMetadata().getNamespace()).resource(resource).create();
     }
 
     /**
-     * Updates specific {@link Deployment} resource
+     * Updates specific {@link DaemonSet} resource
      *
-     * @param resource {@link Deployment} resource that will be updated
+     * @param resource {@link DaemonSet} resource that will be updated
      */
     @Override
-    public void update(Deployment resource) {
+    public void update(DaemonSet resource) {
         client.inNamespace(resource.getMetadata().getNamespace()).resource(resource).update();
     }
 
     /**
-     * Deletes {@link Deployment} resource from Namespace in current context
+     * Deletes {@link DaemonSet} resource from Namespace in current context
      *
-     * @param resource {@link Deployment} resource that will be deleted
+     * @param resource {@link DaemonSet} resource that will be deleted
      */
     @Override
-    public void delete(Deployment resource) {
+    public void delete(DaemonSet resource) {
         client.inNamespace(resource.getMetadata().getNamespace()).withName(resource.getMetadata().getName()).delete();
     }
 
     /**
-     * Replaces {@link Deployment} resource using {@link Consumer}
-     * from which is the current {@link Deployment} resource updated
+     * Replaces {@link DaemonSet} resource using {@link Consumer}
+     * from which is the current {@link DaemonSet} resource updated
      *
-     * @param resource {@link Deployment} resource that will be replaced
+     * @param resource {@link DaemonSet} resource that will be replaced
      * @param editor   {@link Consumer} containing updates to the resource
      */
     @Override
-    public void replace(Deployment resource, Consumer<Deployment> editor) {
-        Deployment toBeUpdated = client.inNamespace(resource.getMetadata().getNamespace())
+    public void replace(DaemonSet resource, Consumer<DaemonSet> editor) {
+        DaemonSet toBeUpdated = client.inNamespace(resource.getMetadata().getNamespace())
             .withName(resource.getMetadata().getName()).get();
         editor.accept(toBeUpdated);
         update(toBeUpdated);
     }
 
     /**
-     * Waits for {@link Deployment} to be ready (created/running)
+     * Waits for {@link DaemonSet} to be ready (created/running)
      *
      * @param resource resource
      * @return result of the readiness check
      */
     @Override
-    public boolean isReady(Deployment resource) {
+    public boolean isReady(DaemonSet resource) {
         return client.resource(resource).isReady();
     }
 
     /**
-     * Waits for {@link Deployment} to be deleted
+     * Waits for {@link DaemonSet} to be deleted
      *
      * @param resource resource
      * @return result of the deletion
      */
     @Override
-    public boolean isDeleted(Deployment resource) {
+    public boolean isDeleted(DaemonSet resource) {
         return resource == null;
     }
 }

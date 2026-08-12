@@ -23,7 +23,16 @@ public class RoleType implements ResourceType<Role> {
      * Constructor
      */
     public RoleType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient().rbac().roles();
+        this(KubeResourceManager.get().kubeClient().getClient().rbac().roles());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    RoleType(MixedOperation<Role, RoleList, Resource<Role>> client) {
+        this.client = client;
     }
 
     /**
