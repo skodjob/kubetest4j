@@ -22,7 +22,16 @@ public class ConfigMapType implements ResourceType<ConfigMap> {
      * Constructor
      */
     public ConfigMapType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient().configMaps();
+        this(KubeResourceManager.get().kubeClient().getClient().configMaps());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    ConfigMapType(MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>> client) {
+        this.client = client;
     }
 
     /**

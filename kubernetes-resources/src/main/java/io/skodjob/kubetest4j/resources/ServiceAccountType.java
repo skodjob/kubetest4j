@@ -23,7 +23,16 @@ public class ServiceAccountType implements ResourceType<ServiceAccount> {
      * Constructor
      */
     public ServiceAccountType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient().serviceAccounts();
+        this(KubeResourceManager.get().kubeClient().getClient().serviceAccounts());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    ServiceAccountType(MixedOperation<ServiceAccount, ServiceAccountList, ServiceAccountResource> client) {
+        this.client = client;
     }
 
     /**

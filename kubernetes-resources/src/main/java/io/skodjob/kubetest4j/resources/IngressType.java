@@ -6,24 +6,24 @@ package io.skodjob.kubetest4j.resources;
 
 import java.util.function.Consumer;
 
-import io.fabric8.kubernetes.api.model.rbac.RoleBinding;
-import io.fabric8.kubernetes.api.model.rbac.RoleBindingList;
+import io.fabric8.kubernetes.api.model.networking.v1.Ingress;
+import io.fabric8.kubernetes.api.model.networking.v1.IngressList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 
 /**
- * Implementation of ResourceType for specific kubernetes resource
+ * Implementation of ResourceType for Ingress resource
  */
-public class RoleBindingType implements ResourceType<RoleBinding> {
+public class IngressType implements ResourceType<Ingress> {
 
-    private final MixedOperation<RoleBinding, RoleBindingList, Resource<RoleBinding>> client;
+    private final MixedOperation<Ingress, IngressList, Resource<Ingress>> client;
 
     /**
      * Constructor
      */
-    public RoleBindingType() {
-        this(KubeResourceManager.get().kubeClient().getClient().rbac().roleBindings());
+    public IngressType() {
+        this(KubeResourceManager.get().kubeClient().getClient().network().v1().ingresses());
     }
 
     /**
@@ -31,7 +31,7 @@ public class RoleBindingType implements ResourceType<RoleBinding> {
      *
      * @param client client
      */
-    RoleBindingType(MixedOperation<RoleBinding, RoleBindingList, Resource<RoleBinding>> client) {
+    IngressType(MixedOperation<Ingress, IngressList, Resource<Ingress>> client) {
         this.client = client;
     }
 
@@ -42,11 +42,11 @@ public class RoleBindingType implements ResourceType<RoleBinding> {
      */
     @Override
     public String getKind() {
-        return "RoleBinding";
+        return "Ingress";
     }
 
     /**
-     * Get specific client for resoruce
+     * Get specific client for resource
      *
      * @return specific client
      */
@@ -56,69 +56,69 @@ public class RoleBindingType implements ResourceType<RoleBinding> {
     }
 
     /**
-     * Creates specific {@link RoleBinding} resource
+     * Creates specific {@link Ingress} resource
      *
-     * @param resource {@link RoleBinding} resource
+     * @param resource {@link Ingress} resource
      */
     @Override
-    public void create(RoleBinding resource) {
+    public void create(Ingress resource) {
         client.inNamespace(resource.getMetadata().getNamespace()).resource(resource).create();
     }
 
     /**
-     * Updates specific {@link RoleBinding} resource
+     * Updates specific {@link Ingress} resource
      *
-     * @param resource {@link RoleBinding} resource that will be updated
+     * @param resource {@link Ingress} resource that will be updated
      */
     @Override
-    public void update(RoleBinding resource) {
+    public void update(Ingress resource) {
         client.inNamespace(resource.getMetadata().getNamespace()).resource(resource).update();
     }
 
     /**
-     * Deletes {@link RoleBinding} resource from Namespace in current context
+     * Deletes {@link Ingress} resource from Namespace in current context
      *
-     * @param resource {@link RoleBinding} resource that will be deleted
+     * @param resource {@link Ingress} resource that will be deleted
      */
     @Override
-    public void delete(RoleBinding resource) {
+    public void delete(Ingress resource) {
         client.inNamespace(resource.getMetadata().getNamespace()).withName(resource.getMetadata().getName()).delete();
     }
 
     /**
-     * Replaces {@link RoleBinding} resource using {@link Consumer}
-     * from which is the current {@link RoleBinding} resource updated
+     * Replaces {@link Ingress} resource using {@link Consumer}
+     * from which is the current {@link Ingress} resource updated
      *
-     * @param resource {@link RoleBinding} resource that will be replaced
+     * @param resource {@link Ingress} resource that will be replaced
      * @param editor   {@link Consumer} containing updates to the resource
      */
     @Override
-    public void replace(RoleBinding resource, Consumer<RoleBinding> editor) {
-        RoleBinding toBeUpdated = client.inNamespace(resource.getMetadata().getNamespace())
+    public void replace(Ingress resource, Consumer<Ingress> editor) {
+        Ingress toBeUpdated = client.inNamespace(resource.getMetadata().getNamespace())
             .withName(resource.getMetadata().getName()).get();
         editor.accept(toBeUpdated);
         update(toBeUpdated);
     }
 
     /**
-     * Waits for {@link RoleBinding} to be ready (created/running)
+     * Waits for {@link Ingress} to be ready (created/running)
      *
      * @param resource resource
      * @return result of the readiness check
      */
     @Override
-    public boolean isReady(RoleBinding resource) {
+    public boolean isReady(Ingress resource) {
         return resource != null;
     }
 
     /**
-     * Waits for {@link RoleBinding} to be deleted
+     * Waits for {@link Ingress} to be deleted
      *
      * @param resource resource
      * @return result of the deletion
      */
     @Override
-    public boolean isDeleted(RoleBinding resource) {
+    public boolean isDeleted(Ingress resource) {
         return resource == null;
     }
 }

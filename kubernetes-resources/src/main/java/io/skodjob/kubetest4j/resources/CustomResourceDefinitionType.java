@@ -24,8 +24,18 @@ public class CustomResourceDefinitionType implements ResourceType<CustomResource
      * Constructor
      */
     public CustomResourceDefinitionType() {
-        this.client = KubeResourceManager.get().kubeClient()
-            .getClient().apiextensions().v1().customResourceDefinitions();
+        this(KubeResourceManager.get().kubeClient()
+            .getClient().apiextensions().v1().customResourceDefinitions());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    CustomResourceDefinitionType(NonNamespaceOperation<CustomResourceDefinition, CustomResourceDefinitionList,
+            Resource<CustomResourceDefinition>> client) {
+        this.client = client;
     }
 
     /**

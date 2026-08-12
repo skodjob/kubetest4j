@@ -24,7 +24,16 @@ public class NamespaceType implements ResourceType<Namespace> {
      * Constructor
      */
     public NamespaceType() {
-        this.client = KubeResourceManager.get().kubeClient().getClient().namespaces();
+        this(KubeResourceManager.get().kubeClient().getClient().namespaces());
+    }
+
+    /**
+     * Constructor with client for testing
+     *
+     * @param client client
+     */
+    NamespaceType(NonNamespaceOperation<Namespace, NamespaceList, Resource<Namespace>> client) {
+        this.client = client;
     }
 
     /**
