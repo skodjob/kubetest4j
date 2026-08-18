@@ -75,6 +75,7 @@ Quick example — pass config directly via Maven:
 * [streamshub](https://github.com/streamshub) Streams E2E - [e2e](https://github.com/streamshub/streams-e2e)
 * [streamshub](https://github.com/streamshub) Streamshub MCP - [streamshub-mcp](https://github.com/streamshub/streamshub-mcp)
 * [streamshub](https://github.com/streamshub) StreamsHub Console for Apache Kafka® - [console](https://github.com/streamshub/console)
+* [kroxylicious](https://github.com/kroxylicious) Kroxylicious, the snappy open source proxy for Apache Kafka® - [kroxylicious](https://github.com/kroxylicious/kroxylicious)
 
 ## Maintainers
 * [David Kornel](https://github.com/kornys) <kornys@outlook.com>
