@@ -19,19 +19,24 @@ import org.mockito.Mockito;
 
 import io.skodjob.kubetest4j.wait.WaitException;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -289,6 +294,161 @@ public class KubeResourceManagerMockTest {
         } finally {
             KubeResourceManager.getCreateCallbacks().remove(throwingCallback);
             KubeResourceManager.getCreateCallbacks().remove(normalCallback);
+        }
+    }
+
+    @Test
+    void testCreateCallbackSeesTestContextOnAsyncWorkerThread() {
+        // Reproduces the NPE reported when a create callback reads getTestContext():
+        // the create body (and callbacks) run on a virtual thread from the executor,
+        // where the plain ThreadLocal test context is not propagated from the caller.
+        AtomicReference<ExtensionContext> observedContext = new AtomicReference<>();
+        AtomicReference<Boolean> ranOnDifferentThread = new AtomicReference<>(false);
+        Thread callingThread = Thread.currentThread();
+
+        Consumer<HasMetadata> contextReadingCallback = resource -> {
+            ranOnDifferentThread.set(Thread.currentThread() != callingThread);
+            observedContext.set(kubeResourceManager.getTestContext());
+        };
+
+        kubeResourceManager.addCreateCallback(contextReadingCallback);
+        try {
+            Namespace ns = new NamespaceBuilder().withNewMetadata()
+                .withName("cb-ctx-ns").endMetadata().build();
+
+            kubeResourceManager.createResourceWithoutWait(ns);
+
+            assertTrue(ranOnDifferentThread.get(),
+                "Callback should execute on an async worker thread, not the caller");
+            assertNotNull(observedContext.get(),
+                "Create callback on the async worker thread must see the test context");
+            assertEquals("mockTest", observedContext.get().getDisplayName(),
+                "Callback should observe the test context set on the calling thread");
+        } finally {
+            KubeResourceManager.getCreateCallbacks().remove(contextReadingCallback);
+        }
+    }
+
+    @Test
+    void testCleanupRunnerSeesTestContextOnAsyncWorkerThread() {
+        // Bulk cleanup runs each tracked resource's runner (which may invoke
+        // user delete callbacks reading getTestContext()) on a virtual thread
+        // from the executor, where the test context must still be visible.
+        AtomicReference<ExtensionContext> observedContext = new AtomicReference<>();
+        AtomicReference<Boolean> ranOnDifferentThread = new AtomicReference<>(false);
+        Thread callingThread = Thread.currentThread();
+
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> {
+            ranOnDifferentThread.set(Thread.currentThread() != callingThread);
+            observedContext.set(kubeResourceManager.getTestContext());
+        }));
+
+        kubeResourceManager.deleteResources(false);
+
+        assertTrue(ranOnDifferentThread.get(),
+            "Cleanup runner should execute on an async worker thread, not the caller");
+        assertNotNull(observedContext.get(),
+            "Cleanup runner on the async worker thread must see the test context");
+        assertEquals("mockTest", observedContext.get().getDisplayName(),
+            "Cleanup runner should observe the test context set on the calling thread");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ThreadLocal<String> clusterContextThreadLocal() throws Exception {
+        Field field = KubeResourceManager.class.getDeclaredField("CURRENT_CLUSTER_CONTEXT");
+        field.setAccessible(true);
+        return (ThreadLocal<String>) field.get(null);
+    }
+
+    @Test
+    void testClusterContextPropagatedToWorkerThread() throws Exception {
+        // Cluster resolution on worker threads goes through activeContextId() ->
+        // CURRENT_CLUSTER_CONTEXT, which (like the test context) is a plain
+        // ThreadLocal not inherited by the executor's virtual threads.
+        ThreadLocal<String> clusterContext = clusterContextThreadLocal();
+
+        String previous = clusterContext.get();
+        clusterContext.set("secondary");
+        try {
+            KubeResourceManager.ThreadContext captured =
+                KubeResourceManager.captureThreadContext();
+
+            AtomicReference<String> observed = new AtomicReference<>();
+            Runnable task = KubeResourceManager.withThreadContext(
+                captured, () -> observed.set(clusterContext.get()));
+
+            Thread worker = new Thread(task);
+            worker.start();
+            worker.join();
+
+            assertEquals("secondary", observed.get(),
+                "Cluster context must be propagated to the async worker thread");
+        } finally {
+            clusterContext.set(previous);
+        }
+    }
+
+    @Test
+    void testReadinessWaitPropagatesClusterContextToWorkerThread() throws Exception {
+        // The readiness-wait stage runs on its own worker thread and resolves
+        // the cluster via kubeClient(); it must observe the caller's context,
+        // not fall back to the default on the worker thread.
+        ThreadLocal<String> clusterContext = clusterContextThreadLocal();
+        Set<String> observedContexts = ConcurrentHashMap.newKeySet();
+        Mockito.doAnswer(inv -> {
+            observedContexts.add(kubeResourceManager.activeContextId());
+            return kubeClient;
+        }).when(kubeResourceManager).kubeClient();
+        // Let the real readiness wait run so it actually resolves kubeClient().
+        Mockito.doCallRealMethod().when(kubeResourceManager)
+            .waitResourceCondition(any(), any());
+        when(namespaceResource.get()).thenReturn(null);
+
+        String previous = clusterContext.get();
+        clusterContext.set("secondary");
+        try {
+            Namespace ns = new NamespaceBuilder().withNewMetadata()
+                .withName("wait-ctx-ns").endMetadata().build();
+
+            kubeResourceManager.createResourceWithWait(ns);
+
+            assertTrue(observedContexts.contains("secondary"),
+                "kubeClient() should be resolved under the propagated context");
+            assertFalse(observedContexts.contains("primary"),
+                "Readiness wait must not fall back to the default cluster context "
+                    + "on the async worker thread");
+        } finally {
+            clusterContext.set(previous);
+        }
+    }
+
+    @Test
+    void testDeletionWaitPropagatesClusterContextToWorkerThread() throws Exception {
+        // The deletion-wait stage runs on its own worker thread and resolves
+        // the cluster via kubeClient(); it must observe the caller's context.
+        ThreadLocal<String> clusterContext = clusterContextThreadLocal();
+        Set<String> observedContexts = ConcurrentHashMap.newKeySet();
+        Mockito.doAnswer(inv -> {
+            observedContexts.add(kubeResourceManager.activeContextId());
+            return kubeClient;
+        }).when(kubeResourceManager).kubeClient();
+        when(namespaceResource.get()).thenReturn(null);
+
+        String previous = clusterContext.get();
+        clusterContext.set("secondary");
+        try {
+            Namespace ns = new NamespaceBuilder().withNewMetadata()
+                .withName("del-wait-ctx-ns").endMetadata().build();
+
+            kubeResourceManager.deleteResourceWithWait(ns);
+
+            assertTrue(observedContexts.contains("secondary"),
+                "kubeClient() should be resolved under the propagated context");
+            assertFalse(observedContexts.contains("primary"),
+                "Deletion wait must not fall back to the default cluster context "
+                    + "on the async worker thread");
+        } finally {
+            clusterContext.set(previous);
         }
     }
 
