@@ -127,19 +127,22 @@ final class ResourceDeleteService {
     private void deleteBatch(ResourceBatch batch, boolean async,
                              List<Exception> errors) {
         List<CompletableFuture<Void>> waiters = new ArrayList<>();
+        KubeResourceManager.ThreadContext threadContext =
+            KubeResourceManager.captureThreadContext();
         for (ResourceItem<?> item : batch.items()) {
-            CompletableFuture<Void> cf = CompletableFuture.runAsync(() -> {
-                Semaphore sem =
-                    KubeResourceManager.operationSemaphore().get();
-                sem.acquireUninterruptibly();
-                try {
-                    item.throwableRunner().run();
-                } catch (Exception e) {
-                    throw new RuntimeException(e.getMessage(), e);
-                } finally {
-                    sem.release();
-                }
-            }, KubeResourceManager.executor());
+            CompletableFuture<Void> cf = CompletableFuture.runAsync(
+                KubeResourceManager.withThreadContext(threadContext, () -> {
+                    Semaphore sem =
+                        KubeResourceManager.operationSemaphore().get();
+                    sem.acquireUninterruptibly();
+                    try {
+                        item.throwableRunner().run();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    } finally {
+                        sem.release();
+                    }
+                }), KubeResourceManager.executor());
             if (async) {
                 waiters.add(cf);
             } else {
@@ -225,20 +228,24 @@ final class ResourceDeleteService {
     <T extends HasMetadata> void decideDeleteWaitAsync(
         List<CompletableFuture<Void>> waiters, boolean async, T res) {
         CompletableFuture<Void> cf;
+        KubeResourceManager.ThreadContext threadContext =
+            KubeResourceManager.captureThreadContext();
         if (async) {
-            cf = CompletableFuture.runAsync(() -> {
-                Semaphore sem =
-                    KubeResourceManager.operationSemaphore().get();
-                sem.acquireUninterruptibly();
-                try {
-                    waitForDeletionWithRetry(res);
-                } finally {
-                    sem.release();
-                }
-            }, KubeResourceManager.executor());
+            cf = CompletableFuture.runAsync(
+                KubeResourceManager.withThreadContext(threadContext, () -> {
+                    Semaphore sem =
+                        KubeResourceManager.operationSemaphore().get();
+                    sem.acquireUninterruptibly();
+                    try {
+                        waitForDeletionWithRetry(res);
+                    } finally {
+                        sem.release();
+                    }
+                }), KubeResourceManager.executor());
         } else {
             cf = CompletableFuture.runAsync(
-                () -> waitForDeletionWithRetry(res),
+                KubeResourceManager.withThreadContext(threadContext,
+                    () -> waitForDeletionWithRetry(res)),
                 KubeResourceManager.executor());
         }
         if (async) {
