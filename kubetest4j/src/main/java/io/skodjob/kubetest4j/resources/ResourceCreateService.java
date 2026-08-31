@@ -104,49 +104,53 @@ final class ResourceCreateService {
     private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateSingle(
         boolean async, boolean waitReady, boolean allowUpdate, T resource) {
 
-        CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
-            Semaphore sem = KubeResourceManager.operationSemaphore().get();
-            sem.acquireUninterruptibly();
-            try {
-                if (allowUpdate && manager.kubeClient().getClient()
-                    .resource(resource).get() != null) {
-                    LoggerUtils.logResource("Updating", resource);
-                    manager.kubeClient().getClient()
-                        .resource(resource).update();
-                } else {
-                    LoggerUtils.logResource("Creating", resource);
-                    manager.kubeClient().getClient()
-                        .resource(resource).create();
+        KubeResourceManager.ThreadContext threadContext =
+            KubeResourceManager.captureThreadContext();
+        CompletableFuture<Void> promise = CompletableFuture.runAsync(
+            KubeResourceManager.withThreadContext(threadContext, () -> {
+                Semaphore sem = KubeResourceManager.operationSemaphore().get();
+                sem.acquireUninterruptibly();
+                try {
+                    if (allowUpdate && manager.kubeClient().getClient()
+                        .resource(resource).get() != null) {
+                        LoggerUtils.logResource("Updating", resource);
+                        manager.kubeClient().getClient()
+                            .resource(resource).update();
+                    } else {
+                        LoggerUtils.logResource("Creating", resource);
+                        manager.kubeClient().getClient()
+                            .resource(resource).create();
+                    }
+                } finally {
+                    sem.release();
                 }
-            } finally {
-                sem.release();
-            }
-            invokeCreateCallbacksSafely(resource);
-        }, KubeResourceManager.executor());
+                invokeCreateCallbacksSafely(resource);
+            }), KubeResourceManager.executor());
 
         if (!waitReady) {
             return promise;
         }
 
-        promise = promise.thenRunAsync(() -> {
-            Semaphore sem = KubeResourceManager.operationSemaphore().get();
-            sem.acquireUninterruptibly();
-            try {
-                assertTrue(manager.waitResourceCondition(resource,
-                    new ResourceCondition<>(p -> {
-                        if (isResourceWithReadiness(resource)) {
+        promise = promise.thenRunAsync(
+            KubeResourceManager.withThreadContext(threadContext, () -> {
+                Semaphore sem = KubeResourceManager.operationSemaphore().get();
+                sem.acquireUninterruptibly();
+                try {
+                    assertTrue(manager.waitResourceCondition(resource,
+                        new ResourceCondition<>(p -> {
+                            if (isResourceWithReadiness(resource)) {
+                                return manager.kubeClient().getClient()
+                                    .resource(resource).isReady();
+                            }
                             return manager.kubeClient().getClient()
-                                .resource(resource).isReady();
-                        }
-                        return manager.kubeClient().getClient()
-                            .resource(resource) != null;
-                    }, "ready")),
-                    "Timed out waiting for " + resource.getKind() + "/"
-                        + resource.getMetadata().getName());
-            } finally {
-                sem.release();
-            }
-        }, KubeResourceManager.executor());
+                                .resource(resource) != null;
+                        }, "ready")),
+                        "Timed out waiting for " + resource.getKind() + "/"
+                            + resource.getMetadata().getName());
+                } finally {
+                    sem.release();
+                }
+            }), KubeResourceManager.executor());
 
         return joinIfSync(async, promise, resource);
     }
@@ -155,23 +159,26 @@ final class ResourceCreateService {
         boolean async, boolean waitReady, boolean allowUpdate,
         T resource, ResourceType<T> type) {
 
-        CompletableFuture<Void> promise = CompletableFuture.runAsync(() -> {
-            Semaphore sem = KubeResourceManager.operationSemaphore().get();
-            sem.acquireUninterruptibly();
-            try {
-                if (allowUpdate && manager.kubeClient().getClient()
-                    .resource(resource).get() != null) {
-                    LoggerUtils.logResource("Updating", resource);
-                    type.update(resource);
-                } else {
-                    LoggerUtils.logResource("Creating", resource);
-                    type.create(resource);
+        KubeResourceManager.ThreadContext threadContext =
+            KubeResourceManager.captureThreadContext();
+        CompletableFuture<Void> promise = CompletableFuture.runAsync(
+            KubeResourceManager.withThreadContext(threadContext, () -> {
+                Semaphore sem = KubeResourceManager.operationSemaphore().get();
+                sem.acquireUninterruptibly();
+                try {
+                    if (allowUpdate && manager.kubeClient().getClient()
+                        .resource(resource).get() != null) {
+                        LoggerUtils.logResource("Updating", resource);
+                        type.update(resource);
+                    } else {
+                        LoggerUtils.logResource("Creating", resource);
+                        type.create(resource);
+                    }
+                } finally {
+                    sem.release();
                 }
-            } finally {
-                sem.release();
-            }
-            invokeCreateCallbacksSafely(resource);
-        }, KubeResourceManager.executor());
+                invokeCreateCallbacksSafely(resource);
+            }), KubeResourceManager.executor());
 
         if (!waitReady) {
             return promise;
@@ -181,18 +188,19 @@ final class ResourceCreateService {
             type.getTimeoutForResourceReadiness(),
             KubeTestConstants.GLOBAL_TIMEOUT_MEDIUM);
 
-        promise = promise.thenRunAsync(() -> {
-            Semaphore sem = KubeResourceManager.operationSemaphore().get();
-            sem.acquireUninterruptibly();
-            try {
-                assertTrue(manager.waitResourceCondition(resource,
-                    ResourceCondition.readiness(type), timeout),
-                    "Timed out waiting for " + resource.getKind() + "/"
-                        + resource.getMetadata().getName());
-            } finally {
-                sem.release();
-            }
-        }, KubeResourceManager.executor());
+        promise = promise.thenRunAsync(
+            KubeResourceManager.withThreadContext(threadContext, () -> {
+                Semaphore sem = KubeResourceManager.operationSemaphore().get();
+                sem.acquireUninterruptibly();
+                try {
+                    assertTrue(manager.waitResourceCondition(resource,
+                        ResourceCondition.readiness(type), timeout),
+                        "Timed out waiting for " + resource.getKind() + "/"
+                            + resource.getMetadata().getName());
+                } finally {
+                    sem.release();
+                }
+            }), KubeResourceManager.executor());
 
         return joinIfSync(async, promise, resource);
     }
