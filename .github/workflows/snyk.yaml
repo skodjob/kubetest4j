@@ -39,7 +39,7 @@ jobs:
           args: --all-projects --sarif-file-output=snyk-os.sarif
 
       - name: Upload Open Source SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: snyk-os.sarif
           category: snyk-open-source
@@ -70,7 +70,7 @@ jobs:
         run: snyk code test --sarif-file-output=snyk-code.sarif
 
       - name: Upload Code SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: snyk-code.sarif
           category: snyk-code
