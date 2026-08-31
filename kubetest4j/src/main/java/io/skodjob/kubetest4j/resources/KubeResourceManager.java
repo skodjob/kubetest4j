@@ -484,7 +484,11 @@ public final class KubeResourceManager {
                 } else {
                     TEST_CONTEXT.remove();
                 }
-                CURRENT_CLUSTER_CONTEXT.set(previousClusterContext);
+                if (previousClusterContext != null) {
+                    CURRENT_CLUSTER_CONTEXT.set(previousClusterContext);
+                } else {
+                    CURRENT_CLUSTER_CONTEXT.remove();
+                }
             }
         };
     }

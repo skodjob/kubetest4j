@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.NamespaceableResource;
+import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.annotations.TestVisualSeparator;
 import io.skodjob.kubetest4j.clients.KubeClient;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
@@ -414,7 +415,7 @@ public class KubeResourceManagerMockTest {
 
             assertTrue(observedContexts.contains("secondary"),
                 "kubeClient() should be resolved under the propagated context");
-            assertFalse(observedContexts.contains("primary"),
+            assertFalse(observedContexts.contains(KubeTestConstants.DEFAULT_CONTEXT_NAME),
                 "Readiness wait must not fall back to the default cluster context "
                     + "on the async worker thread");
         } finally {
@@ -444,7 +445,7 @@ public class KubeResourceManagerMockTest {
 
             assertTrue(observedContexts.contains("secondary"),
                 "kubeClient() should be resolved under the propagated context");
-            assertFalse(observedContexts.contains("primary"),
+            assertFalse(observedContexts.contains(KubeTestConstants.DEFAULT_CONTEXT_NAME),
                 "Deletion wait must not fall back to the default cluster context "
                     + "on the async worker thread");
         } finally {
