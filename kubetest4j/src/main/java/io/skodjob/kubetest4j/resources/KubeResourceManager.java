@@ -433,6 +433,66 @@ public final class KubeResourceManager {
         return EXECUTOR;
     }
 
+    /**
+     * Immutable snapshot of the thread-bound context that asynchronous worker
+     * threads must observe: the JUnit test context and the active cluster
+     * context id.
+     *
+     * @param testContext      the JUnit extension context, may be {@code null}
+     * @param clusterContextId the active cluster context id
+     */
+    record ThreadContext(ExtensionContext testContext, String clusterContextId) {
+    }
+
+    /**
+     * Captures the current thread's context so it can be propagated to an
+     * asynchronous worker thread.
+     *
+     * @return snapshot of the current thread-bound context
+     */
+    static ThreadContext captureThreadContext() {
+        return new ThreadContext(TEST_CONTEXT.get(), CURRENT_CLUSTER_CONTEXT.get());
+    }
+
+    /**
+     * Wraps a task so it executes with the given context bound to the running
+     * thread, restoring the previous bindings afterwards.
+     *
+     * <p>Tasks submitted to {@link #executor()} run on fresh virtual threads
+     * that do not inherit the caller's {@link ThreadLocal} state. Without this
+     * wrapper, resource callbacks and tracking logic relying on
+     * {@link #getTestContext()} — and cluster resolution via
+     * {@link #activeContextId()} — would misbehave on those threads.
+     *
+     * @param context the context to bind
+     * @param task    the task to execute
+     * @return a {@link Runnable} that binds the context around the task
+     */
+    static Runnable withThreadContext(ThreadContext context, Runnable task) {
+        return () -> {
+            ExtensionContext previousTestContext = TEST_CONTEXT.get();
+            String previousClusterContext = CURRENT_CLUSTER_CONTEXT.get();
+            if (context.testContext() != null) {
+                TEST_CONTEXT.set(context.testContext());
+            }
+            CURRENT_CLUSTER_CONTEXT.set(context.clusterContextId());
+            try {
+                task.run();
+            } finally {
+                if (previousTestContext != null) {
+                    TEST_CONTEXT.set(previousTestContext);
+                } else {
+                    TEST_CONTEXT.remove();
+                }
+                if (previousClusterContext != null) {
+                    CURRENT_CLUSTER_CONTEXT.set(previousClusterContext);
+                } else {
+                    CURRENT_CLUSTER_CONTEXT.remove();
+                }
+            }
+        };
+    }
+
     static Object creationLock() {
         return CREATION_LOCK;
     }
