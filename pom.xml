@@ -79,7 +79,7 @@
         <maven.checkstyle.version>3.6.0</maven.checkstyle.version>
         <maven.dependency.version>3.11.0</maven.dependency.version>
 
-        <maven.compile.plugin.version>3.15.0</maven.compile.plugin.version>
+        <maven.compile.plugin.version>3.16.0</maven.compile.plugin.version>
         <maven.source.plugin.version>3.4.0</maven.source.plugin.version>
         <maven.gpg.version>3.2.8</maven.gpg.version>
         <sonatype.nexus.central>0.11.0</sonatype.nexus.central>
@@ -87,7 +87,7 @@
 
         <maven.plugin.plugin.version>3.9.0</maven.plugin.plugin.version>
         <junit.jupiter.version>6.1.3</junit.jupiter.version>
-        <maven.surefire.version>3.5.6</maven.surefire.version>
+        <maven.surefire.version>3.6.0</maven.surefire.version>
         <jackson.version>2.22.2</jackson.version>
         <netty.version>4.2.17.Final</netty.version>
         <org.eclipse.sisu.version>1.1.0</org.eclipse.sisu.version>
