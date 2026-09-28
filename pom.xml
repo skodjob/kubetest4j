@@ -67,10 +67,10 @@
 
         <fabric8.version>8.0.0</fabric8.version>
         <log4j.version>2.26.1</log4j.version>
-        <slf4j.version>2.0.19</slf4j.version>
+        <slf4j.version>2.0.20</slf4j.version>
 
         <!--  TEST dependencies  -->
-        <mockito.version>5.23.0</mockito.version>
+        <mockito.version>5.24.0</mockito.version>
         <apache.commons.version>2.22.0</apache.commons.version>
 
         <!--   Build tools' properties     -->
