@@ -72,9 +72,15 @@ workloads.
 
 1. **Test author <-> Library**: The library trusts test code completely.
    Test authors are developers with cluster access.
-2. **Library <-> Kubernetes API**: Communication uses HTTPS via Fabric8
-   client. Authentication via kubeconfig or bearer token. Certificate
-   verification is not disabled.
+2. **Library <-> Kubernetes API**: Communication uses HTTPS via the Fabric8
+   client, authenticated by kubeconfig or bearer token. On the
+   kubeconfig/environment path, TLS verification follows the kubeconfig. On the
+   `KubeClient(apiUrl, token)` / `fromUrlAndToken()` convenience path, TLS
+   certificate and hostname verification are intentionally disabled
+   (`withTrustCerts(true)`, `--insecure-skip-tls-verify=true`) to support
+   ephemeral test clusters that use self-signed certificates. A
+   machine-in-the-middle on this path could observe the bearer token, so use a
+   kubeconfig backed by a trusted CA when verified TLS is required.
 3. **Library <-> Local filesystem**: Temporary kubeconfigs are written
    with default permissions and deleted on JVM shutdown.
 

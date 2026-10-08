@@ -70,8 +70,9 @@ repository:
   security:
     assessments:
       self:
+        evidence: https://github.com/skodjob/kubetest4j/blob/main/docs/security/self-assessment.md
+        date: '2026-10-08'
         comment: >-
-          SECURITY.md documents a threat model covering trust boundaries,
-          threats considered, and CWE countermeasures. A structured OSPS
-          self-assessment is planned via the Security Slam Inspector badge.
-        evidence: https://github.com/skodjob/kubetest4j/blob/main/SECURITY.md
+          OSPS self-assessment of the kubetest4j core library — credential handling,
+          cluster transport, process execution, YAML ingestion, temporary files, and
+          supply chain — reviewed by the maintainers.
