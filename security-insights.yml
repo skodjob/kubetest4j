@@ -1,0 +1,77 @@
+header:
+  schema-version: 2.2.0
+  last-updated: '2026-10-08'
+  last-reviewed: '2026-10-08'
+  url: https://github.com/skodjob/kubetest4j/raw/main/security-insights.yml
+
+project:
+  name: kubetest4j
+  administrators:
+    - name: David Kornel
+      social: https://github.com/kornys
+      primary: true
+    - name: Jakub Stejskal
+      social: https://github.com/Frawless
+      primary: true
+    - name: Lukas Kral
+      social: https://github.com/im-konge
+      primary: true
+  repositories:
+    - name: kubetest4j
+      url: https://github.com/skodjob/kubetest4j
+      comment: Primary repository for kubetest4j.
+  vulnerability-reporting:
+    reports-accepted: true
+    bug-bounty-available: false
+    contact:
+      name: David Kornel
+      primary: true
+      email: kornys@outlook.com
+    policy: https://github.com/skodjob/kubetest4j/blob/main/SECURITY.md
+    comment: >-
+      Report vulnerabilities via GitHub private vulnerability reporting or by
+      email to kornys@outlook.com. See SECURITY.md for the full process and
+      response timeline.
+  documentation:
+    detailed-guide: https://github.com/skodjob/kubetest4j/blob/main/README.md
+    quickstart-guide: https://github.com/skodjob/kubetest4j/blob/main/docs/QUICKSTART.md
+    code-of-conduct: https://github.com/skodjob/kubetest4j/blob/main/CODE_OF_CONDUCT.md
+
+repository:
+  url: https://github.com/skodjob/kubetest4j
+  status: active
+  accepts-change-request: true
+  accepts-automated-change-request: true
+  core-team:
+    - name: David Kornel
+      social: https://github.com/kornys
+      primary: true
+    - name: Jakub Stejskal
+      social: https://github.com/Frawless
+      primary: true
+    - name: Lukas Kral
+      social: https://github.com/im-konge
+      primary: true
+  license:
+    url: https://github.com/skodjob/kubetest4j/blob/main/LICENSE
+    expression: Apache-2.0
+  documentation:
+    contributing-guide: https://github.com/skodjob/kubetest4j/blob/main/CONTRIBUTING.md
+    security-policy: https://github.com/skodjob/kubetest4j/blob/main/SECURITY.md
+    governance: https://github.com/skodjob/kubetest4j/blob/main/GOVERNANCE.md
+  release:
+    automated-pipeline: true
+    changelog: https://github.com/skodjob/kubetest4j/releases
+    distribution-points:
+      - uri: https://central.sonatype.com/artifact/io.skodjob.kubetest4j/kubetest4j
+        comment: Maven Central release artifacts (GPG-signed).
+      - uri: https://github.com/skodjob/kubetest4j/releases
+        comment: GitHub Releases with tags and release notes.
+  security:
+    assessments:
+      self:
+        comment: >-
+          SECURITY.md documents a threat model covering trust boundaries,
+          threats considered, and CWE countermeasures. A structured OSPS
+          self-assessment is planned via the Security Slam Inspector badge.
+        evidence: https://github.com/skodjob/kubetest4j/blob/main/SECURITY.md
