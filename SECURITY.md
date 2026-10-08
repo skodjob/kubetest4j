@@ -32,6 +32,13 @@ Upon receiving your report, we will:
 
 We are committed to keeping our users safe and will do our utmost to address all security vulnerabilities in a timely manner.
 
+### Public Disclosure and Advisories
+
+Once a reported vulnerability is confirmed and a fix is available, we publish the
+details as a [GitHub Security Advisory](https://github.com/skodjob/kubetest4j/security/advisories)
+for this repository, including the affected versions and the fixed release. Fixed
+CVEs are also listed in the **Security** section of the corresponding release notes.
+
 ## Security Expectations
 
 kubetest4j is a **testing library** intended for use in CI/CD pipelines
