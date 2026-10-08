@@ -11,7 +11,7 @@ We release patches for security vulnerabilities only for the latest released ver
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please email to security[at]skodjob.io. All security vulnerabilities will be promptly addressed.
+If you discover a security vulnerability, please email to kornys[at]outlook.com. All security vulnerabilities will be promptly addressed.
 
 ### Reporting Guidelines
 
