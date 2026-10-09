@@ -112,10 +112,10 @@ ephemeral test clusters over production-grade transport hardening (see §3).
   certificates; callers needing verified TLS use a kubeconfig backed by a trusted CA.
   Documented here and in SECURITY.md.
 - Temporary kubeconfig uses a predictable path under `user.dir` with default
-  permissions. `TODO(maintainer)`: consider a per-process secure temp directory and
-  `0600` permissions. Note: SECURITY.md's CWE-377 note describes `Files.createTempFile`,
-  which is used for crypto temp material (`security/OpenSsl.java`,
-  `utils/SecurityUtils.java`) but **not** for the kubeconfig.
+  permissions. On a shared host this is a minor local-disclosure consideration; possible
+  hardening is a per-process secure temp directory with `0600` permissions. (SECURITY.md's
+  CWE-377 note refers to `Files.createTempFile`, which is used for crypto temp material in
+  `security/OpenSsl.java` and `utils/SecurityUtils.java`, not for the kubeconfig.)
 - No SBOM or signed GitHub-release provenance yet (Maven Central artifacts are
   GPG-signed). Planned as a supply-chain hardening follow-up.
 
