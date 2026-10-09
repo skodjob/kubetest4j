@@ -28,8 +28,9 @@ It is built on the Fabric8 Kubernetes client and JUnit 5.
 
 1. A test declares clusters/namespaces/resources via annotations; the JUnit extension
    wires up clients and a resource manager.
-2. The library authenticates to the cluster (kubeconfig, environment, or API URL +
-   bearer token) and creates/updates/deletes resources, waiting for readiness.
+2. The library authenticates to the cluster (kubeconfig, or API URL +
+   bearer token configured via environment variables) and creates/read/updates/deletes
+   resources, waiting for readiness.
 3. On completion (including failure) it collects diagnostics and performs LIFO cleanup
    of tracked resources.
 
@@ -61,10 +62,11 @@ ephemeral test clusters over production-grade transport hardening (see §3).
   (SCA/license), and GitGuardian secret scanning.
 - **Contributor identity** — All commits must be DCO `Signed-off-by`; a DCO bot gates
   PRs ([CONTRIBUTING.md](../../CONTRIBUTING.md)).
-- `TODO(maintainer)`: confirm whether the `main` ruleset should require **2** approvals
-  and **CODEOWNERS review**, and mark required status checks mandatory (currently the
-  OSPS scanner reports `AC-04.01`, `BR-07.01`, and `QA-03.01` as unmet at the settings
-  level).
+- The `main` ruleset requires at least one non-author maintainer approval, which is the
+  intended policy and satisfies the Baseline. At the repository-settings level the OSPS
+  scanner currently reports `AC-04.01` (default workflow token permissions), `BR-07.01`
+  (secret-scanning push protection), and `QA-03.01` (required status checks) as unmet;
+  these are planned repository-hardening follow-ups.
 
 ## 3. Security Controls and Threat Considerations
 
@@ -105,16 +107,17 @@ ephemeral test clusters over production-grade transport hardening (see §3).
 
 **Known gaps / planned work**
 
-- TLS verification is disabled on the URL+token path (intentional; documented here and
-  in SECURITY.md). `TODO(maintainer)`: consider making verification opt-in/secure-by-default
-  in a future release.
+- TLS verification is disabled on the URL+token path. This is an accepted, intentional
+  trade-off for a test library that targets ephemeral clusters with self-signed
+  certificates; callers needing verified TLS use a kubeconfig backed by a trusted CA.
+  Documented here and in SECURITY.md.
 - Temporary kubeconfig uses a predictable path under `user.dir` with default
   permissions. `TODO(maintainer)`: consider a per-process secure temp directory and
   `0600` permissions. Note: SECURITY.md's CWE-377 note describes `Files.createTempFile`,
   which is used for crypto temp material (`security/OpenSsl.java`,
   `utils/SecurityUtils.java`) but **not** for the kubeconfig.
-- No SBOM or signed GitHub release provenance yet (Maven Central artifacts are
-  GPG-signed) — tracked under the Security Slam Mechanizer/Defender work.
+- No SBOM or signed GitHub-release provenance yet (Maven Central artifacts are
+  GPG-signed). Planned as a supply-chain hardening follow-up.
 
 ## 4. Incident Response and Vulnerability Management
 
@@ -136,8 +139,8 @@ ephemeral test clusters over production-grade transport hardening (see §3).
 - **Build & release** — Automated pipeline (`.github/workflows/publish.yaml`) publishes
   **GPG-signed** artifacts to Maven Central; CI actions are pinned by commit SHA and the
   release job hardens the runner (step-security/harden-runner).
-- **Pending** — SBOM generation and signed GitHub-release provenance (Security Slam
-  Mechanizer/Defender badges).
+- **Pending** — SBOM generation and signed GitHub-release provenance, planned as
+  supply-chain hardening follow-ups.
 
 ---
 
