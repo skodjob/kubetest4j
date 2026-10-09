@@ -1,6 +1,6 @@
 header:
   schema-version: 2.2.0
-  last-updated: '2026-10-08'
+  last-updated: '2026-10-09'
   last-reviewed: '2026-10-08'
   url: https://github.com/skodjob/kubetest4j/raw/main/security-insights.yml
 
@@ -76,3 +76,17 @@ repository:
           OSPS self-assessment of the kubetest4j core library — credential handling,
           cluster transport, process execution, YAML ingestion, temporary files, and
           supply chain — reviewed by the maintainers.
+    tools:
+      - name: OSPS Baseline Scanner
+        type: other
+        rulesets:
+          - osps-baseline-2026-08
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results:
+          ci:
+            name: OSPS Baseline evaluation
+            predicate-uri: https://github.com/revanite-io/osps-baseline-action
+            location: https://github.com/skodjob/kubetest4j/actions/workflows/osps-baseline.yml
