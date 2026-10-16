@@ -4,13 +4,14 @@
  */
 package io.skodjob.kubetest4j.environment;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.dataformat.yaml.YAMLFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -145,7 +146,7 @@ public class TestEnvironmentVariables {
             return mapper.readValue(new File(yamlFile.getAbsoluteFile().toString()),
                 new TypeReference<HashMap<String, Object>>() {
                 });
-        } catch (IOException ex) {
+        } catch (JacksonException ex) {
             LOGGER.info("Yaml configuration not provider or not exists");
             return Collections.emptyMap();
         }
