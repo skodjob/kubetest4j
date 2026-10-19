@@ -56,6 +56,17 @@
         <dependency>
             <groupId>io.fabric8</groupId>
             <artifactId>kubernetes-client</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.fabric8</groupId>
+                    <artifactId>kubernetes-httpclient-vertx-5</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-httpclient-jdk</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.fabric8</groupId>
@@ -170,6 +181,8 @@
                             <configuration>
                                 <failOnWarning>true</failOnWarning>
                                 <ignoredUnusedDeclaredDependencies>
+                                    <!-- JDK HTTP client replaces Vertx to avoid Jackson 2.x transitive -->
+                                    <ignoredUnusedDeclaredDependency>io.fabric8:kubernetes-httpclient-jdk</ignoredUnusedDeclaredDependency>
                                     <!-- Needed for logging in tests used by kubetest4j (uses SLF4J) -->
                                     <ignoredUnusedDeclaredDependency>org.apache.logging.log4j:log4j-slf4j2-impl</ignoredUnusedDeclaredDependency>
                                     <!-- Needed for importing KubernetesClientImpl -->
