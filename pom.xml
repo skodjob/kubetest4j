@@ -74,15 +74,15 @@
         <apache.commons.version>2.22.0</apache.commons.version>
 
         <!--   Build tools' properties     -->
-        <spotbugs.version>4.10.4</spotbugs.version>
-        <maven.spotbugs.version>4.10.4.1</maven.spotbugs.version>
+        <spotbugs.version>4.10.5</spotbugs.version>
+        <maven.spotbugs.version>4.10.5.0</maven.spotbugs.version>
         <maven.checkstyle.version>3.6.0</maven.checkstyle.version>
         <maven.dependency.version>3.11.0</maven.dependency.version>
 
         <maven.compile.plugin.version>3.16.0</maven.compile.plugin.version>
         <maven.source.plugin.version>3.4.0</maven.source.plugin.version>
         <maven.gpg.version>3.2.8</maven.gpg.version>
-        <sonatype.nexus.central>0.11.0</sonatype.nexus.central>
+        <sonatype.nexus.central>0.12.0</sonatype.nexus.central>
         <maven.javadoc.version>3.12.0</maven.javadoc.version>
 
         <maven.plugin.plugin.version>3.9.0</maven.plugin.plugin.version>
