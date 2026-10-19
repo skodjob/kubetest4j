@@ -69,10 +69,13 @@
             <artifactId>junit-jupiter-engine</artifactId>
         </dependency>
 
-        <!-- Fabric8 Kubernetes Client -->
+        <!-- Fabric8 model types only (Namespace, LabelSelector, HasMetadata, ...).
+             The client lifecycle lives in kubetest4j; declaring the full kubernetes-client
+             here would drag in the vertx HTTP transport (and a vulnerable transitive
+             jackson-core 2.x) that this module never uses. -->
         <dependency>
             <groupId>io.fabric8</groupId>
-            <artifactId>kubernetes-client</artifactId>
+            <artifactId>kubernetes-model-core</artifactId>
         </dependency>
 
         <!-- Logger -->

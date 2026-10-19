@@ -88,7 +88,7 @@
         <maven.plugin.plugin.version>3.9.0</maven.plugin.plugin.version>
         <junit.jupiter.version>6.1.3</junit.jupiter.version>
         <maven.surefire.version>3.6.0</maven.surefire.version>
-        <jackson.version>2.22.3</jackson.version>
+        <jackson.version>3.2.3</jackson.version>
         <netty.version>4.2.19.Final</netty.version>
         <org.eclipse.sisu.version>1.1.0</org.eclipse.sisu.version>
         <bouncycastle.version>1.86</bouncycastle.version>
@@ -134,7 +134,7 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson</groupId>
+                <groupId>tools.jackson</groupId>
                 <artifactId>jackson-bom</artifactId>
                 <version>${jackson.version}</version>
                 <type>pom</type>
@@ -190,7 +190,7 @@
                 <version>${maven.surefire.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson.dataformat</groupId>
+                <groupId>tools.jackson.dataformat</groupId>
                 <artifactId>jackson-dataformat-yaml</artifactId>
                 <version>${jackson.version}</version>
             </dependency>

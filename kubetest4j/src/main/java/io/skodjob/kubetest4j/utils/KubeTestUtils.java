@@ -5,16 +5,16 @@
 package io.skodjob.kubetest4j.utils;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.exc.InvalidFormatException;
+import tools.jackson.dataformat.yaml.YAMLFactory;
 
 /**
  * Utility methods for kubetest4j.
@@ -74,7 +74,7 @@ public final class KubeTestUtils {
             return mapper.readValue(yamlFile, c);
         } catch (InvalidFormatException e) {
             throw new IllegalArgumentException(e);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }
@@ -95,7 +95,7 @@ public final class KubeTestUtils {
             return mapper.readValue(yamlFile, c);
         } catch (InvalidFormatException e) {
             throw new IllegalArgumentException(e);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }
