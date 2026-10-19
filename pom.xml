@@ -89,6 +89,8 @@
         <junit.jupiter.version>6.1.3</junit.jupiter.version>
         <maven.surefire.version>3.6.0</maven.surefire.version>
         <jackson.version>3.2.3</jackson.version>
+        <jackson2.version>2.22.3</jackson2.version>
+        <jackson2-annotations.version>2.22</jackson2-annotations.version>
         <netty.version>4.2.19.Final</netty.version>
         <org.eclipse.sisu.version>1.1.0</org.eclipse.sisu.version>
         <bouncycastle.version>1.86</bouncycastle.version>
@@ -153,6 +155,12 @@
                 <version>${fabric8.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+                <exclusions>
+                    <exclusion>
+                        <groupId>io.fabric8</groupId>
+                        <artifactId>kubernetes-httpclient-vertx-5</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
@@ -193,6 +201,18 @@
                 <groupId>tools.jackson.dataformat</groupId>
                 <artifactId>jackson-dataformat-yaml</artifactId>
                 <version>${jackson.version}</version>
+            </dependency>
+            <!-- transitive dep; override here to avoid buggy version -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson2.version}</version>
+            </dependency>
+            <!-- transitive dep; override here to avoid buggy version -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson2-annotations.version}</version>
             </dependency>
             <!--    Logger      -->
             <dependency>
