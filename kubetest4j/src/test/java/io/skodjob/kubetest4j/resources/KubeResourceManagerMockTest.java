@@ -4,6 +4,8 @@
  */
 package io.skodjob.kubetest4j.resources;
 
+import java.util.concurrent.TimeUnit;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.util.Optional;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
@@ -1044,5 +1046,101 @@ public class KubeResourceManagerMockTest {
         kubeResourceManager.setTestContext(methodA);
 
         assertEquals(List.of(typeA), List.of(kubeResourceManager.getResourceTypes()));
+    }
+
+    private static Namespace namespace(String name) {
+        return new NamespaceBuilder().withNewMetadata().withName(name).endMetadata().build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private NamespaceableResource<Namespace> stubSecondNamespace(Namespace ns2) {
+        NamespaceableResource<Namespace> ns2Resource = mock(NamespaceableResource.class);
+        when(kubernetesClient.resource(ns2)).thenReturn(ns2Resource);
+        return ns2Resource;
+    }
+
+    @Test
+    void testCreateConflictIsNotTrackedForCleanup() {
+        Namespace ns = namespace("existing");
+        when(namespaceResource.create()).thenThrow(new KubernetesClientException("exists", 409, null));
+
+        assertThrows(IllegalStateException.class, () -> kubeResourceManager.createResourceWithoutWait(ns));
+
+        assertTrue(kubeResourceManager.getCurrentResources().isEmpty(),
+            "A resource that already existed must not be deleted by this test's cleanup");
+    }
+
+    @Test
+    void testCreateConflictInsideExplicitBatchIsNotTracked() {
+        Namespace ns = namespace("existing");
+        when(namespaceResource.create()).thenThrow(new KubernetesClientException("exists", 409, null));
+
+        kubeResourceManager.startBatch();
+        assertThrows(IllegalStateException.class, () -> kubeResourceManager.createResourceWithoutWait(ns));
+        kubeResourceManager.endBatch();
+
+        assertTrue(kubeResourceManager.getCurrentResources().isEmpty());
+    }
+
+    @Test
+    void testCreateNonConflictFailureStaysTracked() {
+        Namespace ns = namespace("broken");
+        when(namespaceResource.create()).thenThrow(new KubernetesClientException("boom", 500, null));
+
+        assertThrows(IllegalStateException.class, () -> kubeResourceManager.createResourceWithoutWait(ns));
+
+        assertEquals(List.of(ns), kubeResourceManager.getCurrentResources());
+    }
+
+    @Test
+    void testCreateOrUpdateConflictStaysTracked() {
+        Namespace ns = namespace("updated");
+        when(namespaceResource.get()).thenReturn(ns);
+        when(namespaceResource.update()).thenThrow(new KubernetesClientException("conflict", 409, null));
+
+        assertThrows(IllegalStateException.class,
+            () -> kubeResourceManager.createOrUpdateResourceWithoutWait(ns));
+
+        assertEquals(List.of(ns), kubeResourceManager.getCurrentResources());
+    }
+
+    @Test
+    void testSyncCreateStopsAndUntracksRemainingAfterFailure() {
+        Namespace ns = namespace("first");
+        Namespace ns2 = namespace("second");
+        NamespaceableResource<Namespace> ns2Resource = stubSecondNamespace(ns2);
+        when(namespaceResource.create()).thenThrow(new KubernetesClientException("boom", 500, null));
+
+        assertThrows(IllegalStateException.class, () -> kubeResourceManager.createResourceWithWait(ns, ns2));
+
+        verify(ns2Resource, never()).create();
+        assertEquals(List.of(ns), kubeResourceManager.getCurrentResources());
+    }
+
+    @Test
+    void testAsyncCreateFailureThrowsIllegalStateException() {
+        Namespace ns = namespace("async-broken");
+        when(namespaceResource.create()).thenThrow(new KubernetesClientException("boom", 500, null));
+
+        assertThrows(IllegalStateException.class, () -> kubeResourceManager.createResourceAsyncWait(ns));
+    }
+
+    @Test
+    void testCreateWithoutWaitCreatesConcurrently() {
+        Namespace ns = namespace("first");
+        Namespace ns2 = namespace("second");
+        NamespaceableResource<Namespace> ns2Resource = stubSecondNamespace(ns2);
+        CountDownLatch secondStarted = new CountDownLatch(1);
+        when(namespaceResource.create()).thenAnswer(inv -> {
+            assertTrue(secondStarted.await(5, TimeUnit.SECONDS),
+                "ns2 create must start while ns create is in flight");
+            return ns;
+        });
+        when(ns2Resource.create()).thenAnswer(inv -> {
+            secondStarted.countDown();
+            return ns2;
+        });
+
+        assertDoesNotThrow(() -> kubeResourceManager.createResourceWithoutWait(ns, ns2));
     }
 }

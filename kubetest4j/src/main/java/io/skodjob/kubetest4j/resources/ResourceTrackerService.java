@@ -153,6 +153,32 @@ final class ResourceTrackerService {
         batches.removeIf(ResourceBatch::isEmpty);
     }
 
+    /**
+     * Stops tracking a specific item (matched by identity), whether it sits in this
+     * thread's open explicit batch or in the current test's stored batches.
+     *
+     * @param item the item to stop tracking
+     */
+    void untrack(ResourceItem<?> item) {
+        List<ResourceItem<?>> openBatch = getOpenBatch();
+        if (openBatch != null) {
+            openBatch.removeIf(i -> i == item);
+        }
+        ExtensionContext ctx = testContextSupplier.get();
+        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
+        if (ctx == null || byTest == null) {
+            return;
+        }
+        Deque<ResourceBatch> batches = byTest.get(trackingKey(ctx));
+        if (batches == null) {
+            return;
+        }
+        for (ResourceBatch batch : batches) {
+            batch.removeIf(i -> i == item);
+        }
+        batches.removeIf(ResourceBatch::isEmpty);
+    }
+
     // ───────────────────────  BATCH API  ───────────────────────
 
     boolean isExplicitBatchOpen() {

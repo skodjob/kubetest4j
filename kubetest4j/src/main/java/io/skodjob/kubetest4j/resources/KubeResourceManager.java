@@ -656,6 +656,9 @@ public final class KubeResourceManager {
 
     /**
      * Creates resources without waiting for readiness.
+     * <p>
+     * Resources are created concurrently with no ordering guarantee; create dependencies
+     * (for example a Namespace) in a separate call.
      *
      * @param resources The resources to create.
      * @param <T>       The type of the resources.
@@ -689,6 +692,9 @@ public final class KubeResourceManager {
 
     /**
      * Creates or updates resources without waiting.
+     * <p>
+     * Resources are created concurrently with no ordering guarantee; create dependencies
+     * (for example a Namespace) in a separate call.
      *
      * @param resources The resources to create or update.
      * @param <T>       The type of the resources.

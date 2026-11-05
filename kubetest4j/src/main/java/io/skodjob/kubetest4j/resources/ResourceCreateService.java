@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.api.model.ReplicationController;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.ReplicaSet;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
@@ -27,8 +28,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
@@ -51,58 +54,109 @@ final class ResourceCreateService {
 
     // ───────────────────────  CORE CREATE/UPDATE  ──────────────
 
+    /**
+     * Creates (or updates) resources and tracks them for cleanup.
+     *
+     * <p>With {@code async == false} and {@code waitReady == true} resources are processed one
+     * after another and processing stops at the first failure; in every other mode all
+     * resources are processed concurrently. Resources that already existed (HTTP 409 on
+     * create) and resources never attempted are not left tracked, so cleanup does not delete
+     * objects this test did not create. Any failure is rethrown as an
+     * {@link IllegalStateException} with the first cause; further causes are suppressed.
+     */
     @SafeVarargs
     final <T extends HasMetadata> void createOrUpdateResource(
         boolean async, boolean waitReady, boolean allowUpdate, T... resources) {
 
         ResourceTrackerService tracker = manager.tracker();
-        boolean explicitBatchOpen = tracker.isExplicitBatchOpen();
-        List<ResourceItem<?>> implicitBatchItems = new ArrayList<>();
-
+        List<ResourceItem<T>> items = new ArrayList<>(resources.length);
         for (T resource : resources) {
             KubeResourceManager activeManager = KubeResourceManager
                 .getForContext(manager.activeContextId());
-            ResourceItem<T> item = new ResourceItem<>(
+            items.add(new ResourceItem<>(
                 () -> activeManager.deleteResourceWithWait(resource),
-                resource);
-            if (explicitBatchOpen) {
-                tracker.addToCurrentBatch(item);
-            } else {
-                implicitBatchItems.add(item);
-            }
+                resource));
         }
-        if (!explicitBatchOpen && !implicitBatchItems.isEmpty()) {
-            tracker.pushBatchToDeque(new ResourceBatch(implicitBatchItems));
+        if (tracker.isExplicitBatchOpen()) {
+            items.forEach(tracker::addToCurrentBatch);
+        } else if (!items.isEmpty()) {
+            tracker.pushBatchToDeque(new ResourceBatch(new ArrayList<ResourceItem<?>>(items)));
         }
 
+        boolean sequential = !async && waitReady;
         List<CompletableFuture<Void>> promises = new ArrayList<>();
-        for (T resource : resources) {
+        for (int i = 0; i < resources.length; i++) {
+            T resource = resources[i];
             ResourceType<T> type = manager.findResourceType(resource);
             if (manager.getStoreYamlPath() != null) {
                 writeResourceAsYaml(resource);
             }
-            if (type == null) {
-                promises.add(createOrUpdateSingle(
-                    async, waitReady, allowUpdate, resource));
-            } else {
-                promises.add(createOrUpdateSingle(
-                    async, waitReady, allowUpdate, resource, type));
+            CompletableFuture<Void> promise = type == null
+                ? createOrUpdateSingle(waitReady, allowUpdate, resource)
+                : createOrUpdateSingle(waitReady, allowUpdate, resource, type);
+            promises.add(promise);
+            if (sequential && joinFailure(promise) != null) {
+                for (int j = i + 1; j < items.size(); j++) {
+                    tracker.untrack(items.get(j));
+                }
+                break;
             }
         }
 
-        try {
-            CompletableFuture.allOf(
-                promises.toArray(CompletableFuture[]::new)).join();
-        } catch (CompletionException e) {
-            Throwable cause = e.getCause();
-            LOGGER.error(
-                "Exception during wait for resources to be ready", cause);
-            throw new IllegalStateException(cause.getMessage(), cause);
+        List<Throwable> failures = new ArrayList<>();
+        for (int i = 0; i < promises.size(); i++) {
+            Throwable failure = joinFailure(promises.get(i));
+            if (failure == null) {
+                continue;
+            }
+            T resource = resources[i];
+            LOGGER.error("Exception during create or wait for resource {}/{}",
+                resource.getMetadata().getNamespace(),
+                resource.getMetadata().getName(), failure);
+            if (!allowUpdate && isConflict(failure)) {
+                LOGGER.warn("{} {}/{} already exists; it was not created by this test "
+                        + "and will not be deleted during cleanup",
+                    resource.getKind(), resource.getMetadata().getNamespace(),
+                    resource.getMetadata().getName());
+                tracker.untrack(items.get(i));
+            }
+            failures.add(failure);
+        }
+
+        if (!failures.isEmpty()) {
+            Throwable cause = failures.get(0);
+            IllegalStateException error = new IllegalStateException(cause.getMessage(), cause);
+            failures.stream().skip(1).forEach(error::addSuppressed);
+            throw error;
         }
     }
 
+    /**
+     * Waits for the future and returns its unwrapped failure.
+     *
+     * @param promise the future to wait for
+     * @return the failure cause, or {@code null} if the future completed normally
+     */
+    static Throwable joinFailure(CompletableFuture<Void> promise) {
+        try {
+            promise.join();
+            return null;
+        } catch (CompletionException | CancellationException e) {
+            Throwable cause = e;
+            while ((cause instanceof CompletionException || cause instanceof ExecutionException)
+                && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            return cause;
+        }
+    }
+
+    static boolean isConflict(Throwable failure) {
+        return failure instanceof KubernetesClientException kce && kce.getCode() == 409;
+    }
+
     private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateSingle(
-        boolean async, boolean waitReady, boolean allowUpdate, T resource) {
+        boolean waitReady, boolean allowUpdate, T resource) {
 
         KubeResourceManager.ThreadContext threadContext =
             KubeResourceManager.captureThreadContext();
@@ -145,11 +199,11 @@ final class ResourceCreateService {
                 }
             }), KubeResourceManager.executor());
 
-        return joinIfSync(async, promise, resource);
+        return promise;
     }
 
     private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateSingle(
-        boolean async, boolean waitReady, boolean allowUpdate,
+        boolean waitReady, boolean allowUpdate,
         T resource, ResourceType<T> type) {
 
         KubeResourceManager.ThreadContext threadContext =
@@ -195,23 +249,7 @@ final class ResourceCreateService {
                 }
             }), KubeResourceManager.executor());
 
-        return joinIfSync(async, promise, resource);
-    }
-
-    private <T extends HasMetadata> CompletableFuture<Void> joinIfSync(
-        boolean async, CompletableFuture<Void> promise, T resource) {
-        if (async) {
-            return promise;
-        }
-        promise.whenComplete((nothing, error) -> {
-            if (error != null) {
-                LOGGER.error(
-                    "Exception during wait for resource {}/{} to be ready",
-                    resource.getMetadata().getNamespace(),
-                    resource.getMetadata().getName(), error);
-            }
-        }).join();
-        return CompletableFuture.completedFuture(null);
+        return promise;
     }
 
     // ───────────────────────  HELPERS  ─────────────────────────
