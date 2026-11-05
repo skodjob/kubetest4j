@@ -17,4 +17,14 @@ public class WaitException extends RuntimeException {
     public WaitException(String message) {
         super(message);
     }
+
+    /**
+     * Constructs a new WaitException with the specified detail message and cause.
+     *
+     * @param message The detail message.
+     * @param cause   The cause of the failure.
+     */
+    public WaitException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

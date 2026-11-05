@@ -121,4 +121,17 @@ class WaitTest {
             }, () -> ran.set(true)));
         assertTrue(ran.get());
     }
+
+    @Test
+    void testUntilOnInterruptThrowsAndKeepsFlag() {
+        try {
+            Thread.currentThread().interrupt();
+            WaitException ex = assertThrows(WaitException.class,
+                () -> Wait.until("never", 1000, 60_000, () -> false));
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertInstanceOf(InterruptedException.class, ex.getCause());
+        } finally {
+            Thread.interrupted();
+        }
+    }
 }

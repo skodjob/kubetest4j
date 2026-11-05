@@ -137,7 +137,8 @@ public class Wait {
             try {
                 Thread.sleep(sleepTime);
             } catch (InterruptedException e) {
-                return;
+                Thread.currentThread().interrupt();
+                throw new WaitException("Interrupted while waiting for " + description, e);
             }
         }
     }

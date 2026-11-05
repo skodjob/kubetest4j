@@ -313,7 +313,9 @@ final class ResourceDeleteService {
                 Thread.sleep(pollInterval);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                throw new WaitException(String.format(
+                    "Interrupted while waiting for deletion of %s/%s",
+                    resource.getKind(), resource.getMetadata().getName()), e);
             }
         }
 

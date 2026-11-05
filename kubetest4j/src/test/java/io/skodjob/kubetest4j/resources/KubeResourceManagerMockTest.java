@@ -852,4 +852,21 @@ public class KubeResourceManagerMockTest {
 
         kubeResourceManager.deleteResources(false);
     }
+
+    @Test
+    void testWaitForDeletionInterruptedThrows() {
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("int-wait").endMetadata().build();
+        when(namespaceResource.get()).thenReturn(ns);
+        ResourceDeleteService deleteService =
+            new ResourceDeleteService(kubeResourceManager);
+        try {
+            Thread.currentThread().interrupt();
+            assertThrows(WaitException.class,
+                () -> deleteService.waitForDeletionWithRetry(ns, 60_000, 1000, 60_000));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+    }
 }
