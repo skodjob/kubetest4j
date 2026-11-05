@@ -80,6 +80,20 @@ final class ResourceTrackerService {
         return ctx;
     }
 
+    /**
+     * Returns the key under which resources of a test are tracked: the JUnit unique id,
+     * which stays distinct when tests share a display name (for example the same method
+     * name in two classes running in parallel). Falls back to the display name when the
+     * unique id is {@code null}, which happens with mocked contexts.
+     *
+     * @param ctx the JUnit extension context
+     * @return the tracking key
+     */
+    static String trackingKey(ExtensionContext ctx) {
+        String uniqueId = ctx.getUniqueId();
+        return uniqueId != null ? uniqueId : ctx.getDisplayName();
+    }
+
     // ───────────────────────  PUSH / REMOVE  ───────────────────
 
     <T extends HasMetadata> void pushToStack(T resource) {
@@ -109,7 +123,7 @@ final class ResourceTrackerService {
     void pushBatchToDeque(ResourceBatch batch) {
         STORED_RESOURCES
             .computeIfAbsent(manager.contextId(), c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(requireTestContext().getDisplayName(),
+            .computeIfAbsent(trackingKey(requireTestContext()),
                 t -> new ConcurrentLinkedDeque<>())
             .addLast(batch);
     }
@@ -123,7 +137,7 @@ final class ResourceTrackerService {
         if (ctx == null) {
             return;
         }
-        Deque<ResourceBatch> batches = byTest.get(ctx.getDisplayName());
+        Deque<ResourceBatch> batches = byTest.get(trackingKey(ctx));
         if (batches == null) {
             return;
         }
@@ -205,7 +219,7 @@ final class ResourceTrackerService {
     // ───────────────────────  INSPECTION  ──────────────────────
 
     List<HasMetadata> getCurrentResources() {
-        String test = requireTestContext().getDisplayName();
+        String test = trackingKey(requireTestContext());
         return Optional.ofNullable(STORED_RESOURCES.get(manager.contextId()))
             .map(m -> m.get(test))
             .map(batches -> {
@@ -245,11 +259,11 @@ final class ResourceTrackerService {
     }
 
     void printCurrentResources(Level logLevel) {
-        String test = requireTestContext().getDisplayName();
+        ExtensionContext ctx = requireTestContext();
         LOGGER.atLevel(logLevel).log(
-            "Resources in [{}]/{}", manager.contextId(), test);
+            "Resources in [{}]/{}", manager.contextId(), ctx.getDisplayName());
         Optional.ofNullable(STORED_RESOURCES.get(manager.contextId()))
-            .map(m -> m.get(test))
+            .map(m -> m.get(trackingKey(ctx)))
             .ifPresent(batches -> {
                 int batchIndex = 0;
                 for (ResourceBatch batch : batches) {
@@ -268,7 +282,7 @@ final class ResourceTrackerService {
     // ───────────────────────  CLEANUP ACCESSORS  ───────────────
 
     Deque<ResourceBatch> getBatches() {
-        String testName = requireTestContext().getDisplayName();
+        String testName = trackingKey(requireTestContext());
         Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest == null) {
             return null;
@@ -277,7 +291,7 @@ final class ResourceTrackerService {
     }
 
     void cleanupAfterDelete() {
-        String testName = requireTestContext().getDisplayName();
+        String testName = trackingKey(requireTestContext());
         Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest != null) {
             byTest.remove(testName);

@@ -60,7 +60,7 @@ Singleton managing resource lifecycle and LIFO-stack cleanup:
 - `createResourceWithWait(T)` / `createResourceWithoutWait(T)` / `createResourceAsyncWait(T)`
 - `replaceResourceWithRetries(T, Consumer<T>)` — auto-retries on 409 conflicts
 - `deleteResources()` / `deleteResourceWithWait(T)` — cleanup methods
-- Tracks resources per `contextId + testDisplayName` in `STORED_RESOURCES`
+- Tracks resources per `contextId` + JUnit test unique id (display name fallback for mocks) in `STORED_RESOURCES`
 - Uses `Semaphore` (default 50) for async operation throttling
 - Uses virtual threads (`Executors.newVirtualThreadPerTaskExecutor()`)
 - Global callbacks: `addCreateCallback()` / `addDeleteCallback()` — fire on resource create/delete

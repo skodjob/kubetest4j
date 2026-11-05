@@ -922,4 +922,43 @@ public class KubeResourceManagerMockTest {
         Namespace ns = new NamespaceBuilder().withNewMetadata().withName("x").endMetadata().build();
         assertDoesNotThrow(() -> kubeResourceManager.deleteResourceWithWait(ns));
     }
+
+    @Test
+    void testSameDisplayNameDifferentTestsAreIsolated() {
+        ExtensionContext a = mock(ExtensionContext.class);
+        when(a.getDisplayName()).thenReturn("testCreate()");
+        when(a.getUniqueId()).thenReturn("[class:A]/[method:testCreate()]");
+        ExtensionContext b = mock(ExtensionContext.class);
+        when(b.getDisplayName()).thenReturn("testCreate()");
+        when(b.getUniqueId()).thenReturn("[class:B]/[method:testCreate()]");
+        Namespace nsA = new NamespaceBuilder().withNewMetadata().withName("a").endMetadata().build();
+        Namespace nsB = new NamespaceBuilder().withNewMetadata().withName("b").endMetadata().build();
+
+        kubeResourceManager.setTestContext(a);
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, nsA));
+        kubeResourceManager.setTestContext(b);
+        assertTrue(kubeResourceManager.getCurrentResources().isEmpty(),
+            "Test B must not see resources tracked by test A with the same display name");
+        kubeResourceManager.pushToStack(new ResourceItem<>(() -> { }, nsB));
+        kubeResourceManager.deleteResources(false);
+
+        kubeResourceManager.setTestContext(a);
+        assertEquals(List.of(nsA), kubeResourceManager.getCurrentResources(),
+            "Cleanup of test B must not drop test A's tracked resources");
+    }
+
+    @Test
+    void testTrackingKeyFallsBackToDisplayName() {
+        ExtensionContext ctx = mock(ExtensionContext.class);
+        when(ctx.getDisplayName()).thenReturn("legacy()");
+        assertEquals("legacy()", ResourceTrackerService.trackingKey(ctx));
+    }
+
+    @Test
+    void testTrackingKeyUsesUniqueId() {
+        ExtensionContext ctx = mock(ExtensionContext.class);
+        when(ctx.getDisplayName()).thenReturn("same()");
+        when(ctx.getUniqueId()).thenReturn("[class:A]/[method:same()]");
+        assertEquals("[class:A]/[method:same()]", ResourceTrackerService.trackingKey(ctx));
+    }
 }
