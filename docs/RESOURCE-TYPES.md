@@ -30,6 +30,8 @@ class MyTest {
 
 `setResourceTypes(...)` replaces the global list for all contexts. Call it once from a shared abstract base class or static block.
 
+Types declared in `@KubernetesTest(resourceTypes = ...)` are registered only for the annotated class and its `@Nested` classes, and they are removed in `afterAll`. A `@Nested` class must itself carry `@KubernetesTest`; if it declares no `resourceTypes`, it uses the enclosing class's types. They take precedence over the global list and don't affect other test classes, even when classes run in parallel. To do the same by hand, call `setResourceTypes(extensionContext, types...)` and `clearResourceTypes(extensionContext)`.
+
 ---
 
 ## Built-in: kubernetes-resources

@@ -59,7 +59,11 @@ public @interface KubernetesTest {
     /**
      * Resource type implementations to register with KubeResourceManager.
      * Each class must implement {@link ResourceType} and have a no-argument constructor.
-     * The types are instantiated and registered in beforeAll, replacing any previously set types.
+     * The types are instantiated in beforeAll and registered for this test class and its nested
+     * classes only; they take precedence over globally set types and do not affect test classes
+     * running in parallel. They are removed in afterAll. A nested class must itself be annotated
+     * with {@code @KubernetesTest}; without its own {@code resourceTypes} it uses the enclosing
+     * class's types.
      * <p>
      * This is the declarative alternative to calling
      * {@code KubeResourceManager.get().setResourceTypes(...)} in a static block.

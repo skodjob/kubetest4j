@@ -419,7 +419,6 @@ class KubernetesTestExtensionTest {
             doThrow(new RuntimeException("cleanup failed"))
                 .when(mockManager).deleteResources(anyBoolean());
 
-            lenient().when(mockHelper.getPreviousResourceTypes(any())).thenReturn(null);
             lenient().when(mockHelper.getContextManagers(any())).thenReturn(null);
 
             ExtensionContext mockContext = mock(ExtensionContext.class);
@@ -433,9 +432,9 @@ class KubernetesTestExtensionTest {
                 () -> ext.afterAll(mockContext));
             assertEquals("cleanup failed", thrown.getMessage());
 
-            // getPreviousResourceTypes is only called AFTER handleAutomaticCleanup;
+            // clearResourceTypes is only called AFTER handleAutomaticCleanup;
             // if the exception wasn't caught, this call would never happen
-            verify(mockHelper).getPreviousResourceTypes(mockContext);
+            verify(mockManager).clearResourceTypes(mockContext);
         }
 
         @Test

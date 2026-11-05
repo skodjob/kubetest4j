@@ -89,6 +89,7 @@ public final class KubeResourceManager {
     private static volatile String globalStoreYamlPath;
     private static final AtomicReference<ResourceType<?>[]> GLOBAL_RESOURCE_TYPES =
         new AtomicReference<>(new ResourceType<?>[]{});
+    private static final Map<String, ResourceType<?>[]> SCOPED_RESOURCE_TYPES = new ConcurrentHashMap<>();
     private static final List<Consumer<HasMetadata>> GLOBAL_CREATE_CALLBACKS = new CopyOnWriteArrayList<>();
     private static final List<Consumer<HasMetadata>> GLOBAL_DELETE_CALLBACKS = new CopyOnWriteArrayList<>();
 
@@ -264,21 +265,54 @@ public final class KubeResourceManager {
     }
 
     /**
-     * Returns the currently configured resource types.
+     * Returns the resource types in effect for the current thread: types registered via
+     * {@link #setResourceTypes(ExtensionContext, ResourceType[])} for the bound test context
+     * or its nearest ancestor, otherwise the global types.
      *
      * @return array of resource types
      */
     public ResourceType<?>[] getResourceTypes() {
+        ExtensionContext ctx = TEST_CONTEXT.get();
+        while (ctx != null && !SCOPED_RESOURCE_TYPES.isEmpty()) {
+            ResourceType<?>[] scoped = SCOPED_RESOURCE_TYPES.get(ResourceTrackerService.trackingKey(ctx));
+            if (scoped != null) {
+                return scoped;
+            }
+            ctx = ctx.getParent().orElse(null);
+        }
         return GLOBAL_RESOURCE_TYPES.get();
     }
 
     /**
-     * Sets resource types used for typed creation, deletion and readiness checks.
+     * Sets the global resource types used for typed creation, deletion and readiness checks.
+     * Types registered for the current test scope take precedence.
      *
      * @param types resource type implementations
      */
     public void setResourceTypes(ResourceType<?>... types) {
         GLOBAL_RESOURCE_TYPES.set(types);
+    }
+
+    /**
+     * Registers resource types for a JUnit scope, typically a test class context.
+     * They apply to tests running in that scope and all its descendants (for example
+     * nested classes) and take precedence over the global types, without affecting
+     * test classes running in parallel.
+     *
+     * @param scope the extension context the types apply to
+     * @param types resource type implementations
+     */
+    public void setResourceTypes(ExtensionContext scope, ResourceType<?>... types) {
+        SCOPED_RESOURCE_TYPES.put(ResourceTrackerService.trackingKey(scope), types);
+    }
+
+    /**
+     * Removes resource types registered for a JUnit scope.
+     *
+     * @param scope the extension context whose types are removed
+     */
+    public void clearResourceTypes(ExtensionContext scope) {
+        SCOPED_RESOURCE_TYPES.remove(ResourceTrackerService.trackingKey(scope));
     }
 
     /**
@@ -306,6 +340,7 @@ public final class KubeResourceManager {
     /* test */ static void clearInstances() {
         CONTEXT_INSTANCES.clear();
         ResourceTrackerService.reset();
+        SCOPED_RESOURCE_TYPES.clear();
     }
 
     /**
@@ -864,8 +899,7 @@ public final class KubeResourceManager {
      */
     @SuppressWarnings("unchecked")
     <T extends HasMetadata> ResourceType<T> findResourceType(T resource) {
-        ResourceType<?>[] types = GLOBAL_RESOURCE_TYPES.get();
-        for (ResourceType<?> rt : types) {
+        for (ResourceType<?> rt : getResourceTypes()) {
             if (rt.getKind().equals(resource.getKind())) {
                 return (ResourceType<T>) rt;
             }

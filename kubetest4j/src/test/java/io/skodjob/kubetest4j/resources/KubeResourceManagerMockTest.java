@@ -4,6 +4,7 @@
  */
 package io.skodjob.kubetest4j.resources;
 
+import java.util.Optional;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
@@ -38,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -960,5 +962,87 @@ public class KubeResourceManagerMockTest {
         when(ctx.getDisplayName()).thenReturn("same()");
         when(ctx.getUniqueId()).thenReturn("[class:A]/[method:same()]");
         assertEquals("[class:A]/[method:same()]", ResourceTrackerService.trackingKey(ctx));
+    }
+
+    private static ExtensionContext scopedContext(String uniqueId, ExtensionContext parent) {
+        ExtensionContext ctx = mock(ExtensionContext.class);
+        when(ctx.getUniqueId()).thenReturn(uniqueId);
+        when(ctx.getDisplayName()).thenReturn(uniqueId);
+        when(ctx.getParent()).thenReturn(Optional.ofNullable(parent));
+        return ctx;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ResourceType<Namespace> namespaceTypeMock() {
+        ResourceType<Namespace> type = mock(ResourceType.class);
+        when(type.getKind()).thenReturn("Namespace");
+        return type;
+    }
+
+    @Test
+    void testScopedResourceTypesResolvedFromMethodContext() {
+        ExtensionContext classA = scopedContext("[class:A]", null);
+        ExtensionContext methodA = scopedContext("[class:A]/[method:m()]", classA);
+        ResourceType<Namespace> typeA = namespaceTypeMock();
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("s").endMetadata().build();
+
+        kubeResourceManager.setResourceTypes(classA, typeA);
+        kubeResourceManager.setTestContext(methodA);
+
+        assertSame(typeA, kubeResourceManager.findResourceType(ns));
+    }
+
+    @Test
+    void testScopedResourceTypesDoNotLeakAcrossClasses() {
+        ExtensionContext classA = scopedContext("[class:A]", null);
+        ExtensionContext classB = scopedContext("[class:B]", null);
+        ExtensionContext methodB = scopedContext("[class:B]/[method:m()]", classB);
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("s").endMetadata().build();
+
+        kubeResourceManager.setResourceTypes(classA, namespaceTypeMock());
+        kubeResourceManager.setTestContext(methodB);
+
+        assertNull(kubeResourceManager.findResourceType(ns));
+    }
+
+    @Test
+    void testClearResourceTypesFallsBackToGlobal() {
+        ExtensionContext classA = scopedContext("[class:A]", null);
+        ExtensionContext methodA = scopedContext("[class:A]/[method:m()]", classA);
+        ResourceType<Namespace> typeG = namespaceTypeMock();
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("s").endMetadata().build();
+
+        kubeResourceManager.setResourceTypes(typeG);
+        kubeResourceManager.setResourceTypes(classA, namespaceTypeMock());
+        kubeResourceManager.clearResourceTypes(classA);
+        kubeResourceManager.setTestContext(methodA);
+
+        assertSame(typeG, kubeResourceManager.findResourceType(ns));
+    }
+
+    @Test
+    void testNestedContextInheritsScopedTypes() {
+        ExtensionContext classA = scopedContext("[class:A]", null);
+        ExtensionContext nestedA = scopedContext("[class:A]/[nested-class:N]", classA);
+        ExtensionContext nestedMethod = scopedContext("[class:A]/[nested-class:N]/[method:m()]", nestedA);
+        ResourceType<Namespace> typeA = namespaceTypeMock();
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("s").endMetadata().build();
+
+        kubeResourceManager.setResourceTypes(classA, typeA);
+        kubeResourceManager.setTestContext(nestedMethod);
+
+        assertSame(typeA, kubeResourceManager.findResourceType(ns));
+    }
+
+    @Test
+    void testGetResourceTypesReturnsScopedTypesForCurrentTest() {
+        ExtensionContext classA = scopedContext("[class:A]", null);
+        ExtensionContext methodA = scopedContext("[class:A]/[method:m()]", classA);
+        ResourceType<Namespace> typeA = namespaceTypeMock();
+
+        kubeResourceManager.setResourceTypes(classA, typeA);
+        kubeResourceManager.setTestContext(methodA);
+
+        assertEquals(List.of(typeA), List.of(kubeResourceManager.getResourceTypes()));
     }
 }

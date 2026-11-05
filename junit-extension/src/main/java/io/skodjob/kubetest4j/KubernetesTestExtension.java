@@ -177,14 +177,10 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         // Clean up class namespaces (only those created by the test)
         classNamespaceService.cleanupClassNamespaces(context);
 
-        // Restore previous resource types to prevent leaking to next class
-        ResourceType<?>[] previousTypes = contextStoreHelper.getPreviousResourceTypes(context);
-        if (previousTypes != null) {
-            KubeResourceManager resourceManager = getResourceManager(context);
-            if (resourceManager != null) {
-                resourceManager.setResourceTypes(previousTypes);
-                LOGGER.debug("Restored previous resource types ({} type(s))", previousTypes.length);
-            }
+        // Drop resource types scoped to this class (registered in beforeAll)
+        KubeResourceManager scopedTypesManager = getResourceManager(context);
+        if (scopedTypesManager != null) {
+            scopedTypesManager.clearResourceTypes(context);
         }
 
         // Clean up ThreadLocal variables to prevent thread reuse issues
@@ -343,11 +339,10 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
     /**
      * Registers resource types declared via {@code @KubernetesTest(resourceTypes = {...})}.
-     * Each class is instantiated via its no-arg constructor and registered globally via
-     * {@link KubeResourceManager#setResourceTypes(ResourceType[])}.
-     * <p>
-     * The previous global types are saved and restored in {@link #afterAll} to prevent
-     * leaking state between test classes.
+     * Each class is instantiated via its no-arg constructor and registered for this test class
+     * scope via {@link KubeResourceManager#setResourceTypes(ExtensionContext, ResourceType[])},
+     * so test classes running in parallel do not overwrite each other's types. The scope is
+     * cleared in {@link #afterAll}.
      *
      * @param context         the extension context
      * @param resourceManager the resource manager to register types with
@@ -370,10 +365,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
             }
         }
 
-        // Save current types so they can be restored in afterAll
-        contextStoreHelper.putPreviousResourceTypes(context, resourceManager.getResourceTypes());
-
-        resourceManager.setResourceTypes(types);
+        resourceManager.setResourceTypes(context, types);
         LOGGER.debug("Registered {} resource type(s) from @KubernetesTest annotation", types.length);
     }
 

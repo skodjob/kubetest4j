@@ -86,7 +86,7 @@ Abstraction for kubectl/oc CLI operations. `BaseCmdKubeClient` is the base; `Kub
 - `storeYaml` / `yamlStorePath` — persist created resource YAMLs
 - `visualSeparatorChar` / `visualSeparatorLength` — log formatting
 
-The annotation is `@Inherited`. `resourceTypes` has special merge behavior: child class inherits parent's `resourceTypes` if not explicitly overridden (see `resolveResourceTypes()` in `KubernetesTestExtension`).
+The annotation is `@Inherited`. `resourceTypes` has special merge behavior: child class inherits parent's `resourceTypes` if not explicitly overridden (see `resolveResourceTypes()` in `KubernetesTestExtension`). These types are registered per test-class scope via `setResourceTypes(ExtensionContext, ...)` (not globally) and cleared in afterAll, so parallel classes don't overwrite each other.
 
 **Namespace annotations** (on fields/parameters, not in `@KubernetesTest`):
 - `@ClassNamespace(name, labels[], annotations[], kubeContext)` — class-level (static fields), created in beforeAll, deleted in afterAll. Pre-existing namespaces are protected (used but never deleted).

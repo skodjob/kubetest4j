@@ -5,7 +5,6 @@
 package io.skodjob.kubetest4j;
 
 import io.fabric8.kubernetes.api.model.Namespace;
-import io.skodjob.kubetest4j.interfaces.ResourceType;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
@@ -43,7 +42,6 @@ class ContextStoreHelper {
     private static final String METHOD_NAMESPACE_ENTRIES_KEY = "kubernetes.test.methodNamespaceEntries";
 
     // Resource types: saved previous value for restore in afterAll
-    private static final String PREVIOUS_RESOURCE_TYPES_KEY = "kubernetes.test.previousResourceTypes";
 
     // ===============================
     // Basic Store Operations
@@ -329,29 +327,5 @@ class ContextStoreHelper {
     public List<MethodNamespaceService.MethodNamespaceEntry> getMethodNamespaceEntries(
         ExtensionContext context) {
         return getUnchecked(context, METHOD_NAMESPACE_ENTRIES_KEY);
-    }
-
-    // ===============================
-    // Resource Types Store Operations
-    // ===============================
-
-    /**
-     * Saves the previous global resource types so they can be restored in afterAll.
-     *
-     * @param context       the extension context
-     * @param resourceTypes the previous resource types to save
-     */
-    public void putPreviousResourceTypes(ExtensionContext context, ResourceType<?>[] resourceTypes) {
-        put(context, PREVIOUS_RESOURCE_TYPES_KEY, resourceTypes);
-    }
-
-    /**
-     * Gets the saved previous resource types for restore.
-     *
-     * @param context the extension context
-     * @return the previous resource types, or null if none were saved
-     */
-    public ResourceType<?>[] getPreviousResourceTypes(ExtensionContext context) {
-        return get(context, PREVIOUS_RESOURCE_TYPES_KEY, ResourceType[].class);
     }
 }
