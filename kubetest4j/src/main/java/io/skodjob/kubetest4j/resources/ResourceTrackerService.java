@@ -61,6 +61,25 @@ final class ResourceTrackerService {
         this.itemFactory = itemFactory;
     }
 
+    // ───────────────────────  CONTEXT  ─────────────────────────
+
+    /**
+     * Returns the JUnit test context bound to the current thread.
+     *
+     * @return the bound test context
+     * @throws IllegalStateException if no test context is bound
+     */
+    private ExtensionContext requireTestContext() {
+        ExtensionContext ctx = testContextSupplier.get();
+        if (ctx == null) {
+            throw new IllegalStateException("No JUnit test context is bound to thread '"
+                + Thread.currentThread().getName() + "' for context '" + manager.contextId()
+                + "'. Annotate the test class with @ResourceManager or @KubernetesTest, "
+                + "or call KubeResourceManager.setTestContext(...) on this thread.");
+        }
+        return ctx;
+    }
+
     // ───────────────────────  PUSH / REMOVE  ───────────────────
 
     <T extends HasMetadata> void pushToStack(T resource) {
@@ -90,7 +109,7 @@ final class ResourceTrackerService {
     void pushBatchToDeque(ResourceBatch batch) {
         STORED_RESOURCES
             .computeIfAbsent(manager.contextId(), c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(testContextSupplier.get().getDisplayName(),
+            .computeIfAbsent(requireTestContext().getDisplayName(),
                 t -> new ConcurrentLinkedDeque<>())
             .addLast(batch);
     }
@@ -186,7 +205,7 @@ final class ResourceTrackerService {
     // ───────────────────────  INSPECTION  ──────────────────────
 
     List<HasMetadata> getCurrentResources() {
-        String test = testContextSupplier.get().getDisplayName();
+        String test = requireTestContext().getDisplayName();
         return Optional.ofNullable(STORED_RESOURCES.get(manager.contextId()))
             .map(m -> m.get(test))
             .map(batches -> {
@@ -226,7 +245,7 @@ final class ResourceTrackerService {
     }
 
     void printCurrentResources(Level logLevel) {
-        String test = testContextSupplier.get().getDisplayName();
+        String test = requireTestContext().getDisplayName();
         LOGGER.atLevel(logLevel).log(
             "Resources in [{}]/{}", manager.contextId(), test);
         Optional.ofNullable(STORED_RESOURCES.get(manager.contextId()))
@@ -249,7 +268,7 @@ final class ResourceTrackerService {
     // ───────────────────────  CLEANUP ACCESSORS  ───────────────
 
     Deque<ResourceBatch> getBatches() {
-        String testName = testContextSupplier.get().getDisplayName();
+        String testName = requireTestContext().getDisplayName();
         Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest == null) {
             return null;
@@ -258,7 +277,7 @@ final class ResourceTrackerService {
     }
 
     void cleanupAfterDelete() {
-        String testName = testContextSupplier.get().getDisplayName();
+        String testName = requireTestContext().getDisplayName();
         Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest != null) {
             byTest.remove(testName);

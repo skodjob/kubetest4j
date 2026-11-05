@@ -38,6 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -894,5 +896,30 @@ public class KubeResourceManagerMockTest {
         when(dr.isReady()).thenReturn(false);
         assertFalse(ResourceCreateService.defaultReadiness(kubeResourceManager, d)
             .predicate().test(d));
+    }
+
+    @Test
+    void testPushToStackWithoutTestContextThrowsClearError() {
+        kubeResourceManager.cleanTestContext();
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("x").endMetadata().build();
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> kubeResourceManager.pushToStack(ns));
+        assertTrue(ex.getMessage().contains("@ResourceManager"));
+    }
+
+    @Test
+    void testCreateWithoutTestContextFailsBeforeApiCall() {
+        kubeResourceManager.cleanTestContext();
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("x").endMetadata().build();
+        assertThrows(IllegalStateException.class,
+            () -> kubeResourceManager.createResourceWithoutWait(ns));
+        verify(namespaceResource, never()).create();
+    }
+
+    @Test
+    void testDeleteWithoutTestContextStillWorks() {
+        kubeResourceManager.cleanTestContext();
+        Namespace ns = new NamespaceBuilder().withNewMetadata().withName("x").endMetadata().build();
+        assertDoesNotThrow(() -> kubeResourceManager.deleteResourceWithWait(ns));
     }
 }
