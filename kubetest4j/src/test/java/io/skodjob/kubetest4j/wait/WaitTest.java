@@ -10,11 +10,13 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @TestVisualSeparator
 class WaitTest {
@@ -101,5 +103,22 @@ class WaitTest {
         CompletionException thrown = assertThrows(CompletionException.class, future::join);
         assertInstanceOf(NullPointerException.class, thrown.getCause(), "Expected NullPointerException");
     }
-}
 
+    @Test
+    void testTimeoutWithNullExceptionMessageThrowsWaitException() {
+        assertThrows(WaitException.class, () -> Wait.until("null-msg", 10, 100,
+            () -> {
+                throw new RuntimeException();
+            }));
+    }
+
+    @Test
+    void testTimeoutWithNullExceptionMessageRunsOnTimeout() {
+        AtomicBoolean ran = new AtomicBoolean(false);
+        assertThrows(WaitException.class, () -> Wait.until("null-msg", 10, 100,
+            () -> {
+                throw new RuntimeException();
+            }, () -> ran.set(true)));
+        assertTrue(ran.get());
+    }
+}

@@ -114,7 +114,7 @@ public class Wait {
             }
             if (timeLeft <= 0) {
                 if (exceptionCount > 1) {
-                    if (exceptionMessage.equals("null")) {
+                    if (exceptionMessage == null || "null".equals(exceptionMessage)) {
                         LOGGER.error("Latest exception while waiting for: {} was: {}",
                             description, exceptionMessage);
                     } else {
