@@ -137,14 +137,7 @@ final class ResourceCreateService {
                 sem.acquireUninterruptibly();
                 try {
                     assertTrue(manager.waitResourceCondition(resource,
-                        new ResourceCondition<>(p -> {
-                            if (isResourceWithReadiness(resource)) {
-                                return manager.kubeClient().getClient()
-                                    .resource(resource).isReady();
-                            }
-                            return manager.kubeClient().getClient()
-                                .resource(resource) != null;
-                        }, "ready")),
+                        defaultReadiness(manager, resource)),
                         "Timed out waiting for " + resource.getKind() + "/"
                             + resource.getMetadata().getName());
                 } finally {
@@ -233,6 +226,23 @@ final class ResourceCreateService {
                     e.getMessage(), e);
             }
         }
+    }
+
+    /**
+     * Readiness condition used when no {@link ResourceType} is registered for the kind:
+     * the resource must exist and, for kinds Fabric8 can judge, report ready.
+     *
+     * @param manager  the manager whose client checks readiness
+     * @param resource the resource being waited for
+     * @param <T>      resource type
+     * @return condition named "ready"
+     */
+    static <T extends HasMetadata> ResourceCondition<T> defaultReadiness(
+        KubeResourceManager manager, T resource) {
+        return new ResourceCondition<>(current -> current != null
+            && (!isResourceWithReadiness(resource)
+                || manager.kubeClient().getClient().resource(resource).isReady()),
+            "ready");
     }
 
     static <T extends HasMetadata> boolean isResourceWithReadiness(T resource) {

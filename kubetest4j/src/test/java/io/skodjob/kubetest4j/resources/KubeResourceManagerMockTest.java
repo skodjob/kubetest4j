@@ -4,6 +4,10 @@
  */
 package io.skodjob.kubetest4j.resources;
 
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
+import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
@@ -403,14 +407,14 @@ public class KubeResourceManagerMockTest {
         // Let the real readiness wait run so it actually resolves kubeClient().
         Mockito.doCallRealMethod().when(kubeResourceManager)
             .waitResourceCondition(any(), any());
-        when(namespaceResource.get()).thenReturn(null);
+        Namespace ns = new NamespaceBuilder().withNewMetadata()
+            .withName("wait-ctx-ns").endMetadata().build();
+        // The resource exists once created, so the default readiness check passes.
+        when(namespaceResource.get()).thenReturn(ns);
 
         String previous = clusterContext.get();
         clusterContext.set("secondary");
         try {
-            Namespace ns = new NamespaceBuilder().withNewMetadata()
-                .withName("wait-ctx-ns").endMetadata().build();
-
             kubeResourceManager.createResourceWithWait(ns);
 
             assertTrue(observedContexts.contains("secondary"),
@@ -868,5 +872,27 @@ public class KubeResourceManagerMockTest {
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void testDefaultReadinessRequiresExistence() {
+        ConfigMap cm = new ConfigMapBuilder().withNewMetadata()
+            .withName("cm").withNamespace("ns").endMetadata().build();
+        ResourceCondition<ConfigMap> c =
+            ResourceCreateService.defaultReadiness(kubeResourceManager, cm);
+        assertFalse(c.predicate().test(null));
+        assertTrue(c.predicate().test(cm));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testDefaultReadinessUsesIsReadyForDeployment() {
+        Deployment d = new DeploymentBuilder().withNewMetadata()
+            .withName("d").withNamespace("ns").endMetadata().build();
+        NamespaceableResource<Deployment> dr = mock(NamespaceableResource.class);
+        when(kubernetesClient.resource(d)).thenReturn(dr);
+        when(dr.isReady()).thenReturn(false);
+        assertFalse(ResourceCreateService.defaultReadiness(kubeResourceManager, d)
+            .predicate().test(d));
     }
 }
