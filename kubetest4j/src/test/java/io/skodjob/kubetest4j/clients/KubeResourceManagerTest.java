@@ -586,8 +586,9 @@ class KubeResourceManagerTest {
     @Test
     void testDeleteWithoutNameIsRefusedAndDeletesNothing() {
         kubernetesClient.configMaps().inNamespace("default").resource(configMap("keep")).create();
-        RuntimeException e = assertThrows(RuntimeException.class,
-            () -> KubeResourceManager.get().deleteResourceWithWait(generated("gen-")));
+        KubeResourceManager krm = KubeResourceManager.get();
+        ConfigMap nameless = generated("gen-");
+        RuntimeException e = assertThrows(RuntimeException.class, () -> krm.deleteResourceWithWait(nameless));
         assertInstanceOf(IllegalArgumentException.class, e.getSuppressed()[0]);
         assertTrue(e.getSuppressed()[0].getMessage().contains("metadata.name is not set"));
         assertNotNull(kubernetesClient.configMaps().inNamespace("default").withName("keep").get());
@@ -595,8 +596,9 @@ class KubeResourceManagerTest {
 
     @Test
     void testPushToStackWithoutNameIsRefused() {
-        assertThrows(IllegalArgumentException.class,
-            () -> KubeResourceManager.get().pushToStack(generated("gen-")));
+        KubeResourceManager krm = KubeResourceManager.get();
+        ConfigMap nameless = generated("gen-");
+        assertThrows(IllegalArgumentException.class, () -> krm.pushToStack(nameless));
     }
 
     @Test
@@ -684,8 +686,8 @@ class KubeResourceManagerTest {
     @Test
     void testCreateWithoutNameOrGenerateNameFailsBeforeTracking() {
         ConfigMap nameless = new ConfigMapBuilder().withNewMetadata().withNamespace("default").endMetadata().build();
-        assertThrows(IllegalArgumentException.class,
-            () -> KubeResourceManager.get().createResourceWithoutWait(nameless));
+        KubeResourceManager krm = KubeResourceManager.get();
+        assertThrows(IllegalArgumentException.class, () -> krm.createResourceWithoutWait(nameless));
         assertTrue(KubeResourceManager.get().getCurrentResources().isEmpty());
     }
 

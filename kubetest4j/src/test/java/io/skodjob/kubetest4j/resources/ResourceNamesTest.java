@@ -87,8 +87,8 @@ class ResourceNamesTest {
         assertEquals("Cannot create ConfigMap in namespace 'default': "
                 + "neither metadata.name nor metadata.generateName is set",
             assertThrows(IllegalArgumentException.class, () -> ResourceNames.withResolvedName(cm)).getMessage());
+        ConfigMap noMeta = new ConfigMap();
         assertEquals("Cannot create ConfigMap: neither metadata.name nor metadata.generateName is set",
-            assertThrows(IllegalArgumentException.class,
-                () -> ResourceNames.withResolvedName(new ConfigMap())).getMessage());
+            assertThrows(IllegalArgumentException.class, () -> ResourceNames.withResolvedName(noMeta)).getMessage());
     }
 }

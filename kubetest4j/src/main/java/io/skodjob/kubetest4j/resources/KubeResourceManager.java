@@ -387,16 +387,19 @@ public final class KubeResourceManager {
     /* ─────────────────  PACKAGE-PRIVATE ACCESSORS  ─────────── */
 
     synchronized ResourceTrackerService tracker() {
-        if (tracker == null) {
-            tracker = new ResourceTrackerService(this, this::getTestContext,
+        // Lazy init through a local, so the returned value is provably non-null (static analysis).
+        ResourceTrackerService current = tracker;
+        if (current == null) {
+            current = new ResourceTrackerService(this, this::getTestContext,
                 r -> {
                     KubeResourceManager active =
                         getForContext(activeContextId());
                     return new ResourceItem<>(
                         () -> active.deleteResourceWithWait(r), r);
                 });
+            tracker = current;
         }
-        return tracker;
+        return current;
     }
 
     private synchronized ResourceCreateService createService() {
