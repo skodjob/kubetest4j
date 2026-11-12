@@ -67,6 +67,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * prodMgr.createResourceWithWait(prodDeployment);
  * </pre>
  *
+ * <h3>Resource names</h3>
+ * A resource that sets only {@code metadata.generateName} gets a name in the same format the API
+ * server generates, on a copy, before it is created; it is created, waited for, tracked and cleaned
+ * up under that name. The caller's object is not modified, so one object can be used as a template
+ * for several creates. Deleting a resource without {@code metadata.name} is refused, because such a
+ * request would target every object of that kind.
+ *
  * <p>Implementation is split across package-private helpers:
  * <ul>
  *   <li>{@link ResourceTrackerService} — batch/stack tracking</li>

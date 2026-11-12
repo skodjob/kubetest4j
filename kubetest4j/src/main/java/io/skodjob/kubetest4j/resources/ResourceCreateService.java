@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -51,43 +52,36 @@ final class ResourceCreateService {
 
     // ───────────────────────  CORE CREATE/UPDATE  ──────────────
 
+    /**
+     * Creates (or updates) resources and tracks them for cleanup.
+     *
+     * <p>Resources with only {@code metadata.generateName} are created from a copy with a generated
+     * name; the caller's object is not modified. They are always created, never updated, even by the
+     * create-or-update variants. A resource with neither {@code metadata.name} nor
+     * {@code metadata.generateName} is rejected with an {@link IllegalArgumentException} before
+     * anything is tracked or sent to the API server.
+     */
     @SafeVarargs
     final <T extends HasMetadata> void createOrUpdateResource(
         boolean async, boolean waitReady, boolean allowUpdate, T... resources) {
 
+        // Resolve names before anything is tracked: cleanup must delete by name, never the whole collection.
+        List<Planned<T>> planned = Arrays.stream(resources)
+            .map(resource -> plan(resource, allowUpdate))
+            .toList();
+
         ResourceTrackerService tracker = manager.tracker();
-        boolean explicitBatchOpen = tracker.isExplicitBatchOpen();
-        List<ResourceItem<?>> implicitBatchItems = new ArrayList<>();
-
-        for (T resource : resources) {
-            KubeResourceManager activeManager = KubeResourceManager
-                .getForContext(manager.activeContextId());
-            ResourceItem<T> item = new ResourceItem<>(
-                () -> activeManager.deleteResourceWithWait(resource),
-                resource);
-            if (explicitBatchOpen) {
-                tracker.addToCurrentBatch(item);
-            } else {
-                implicitBatchItems.add(item);
-            }
-        }
-        if (!explicitBatchOpen && !implicitBatchItems.isEmpty()) {
-            tracker.pushBatchToDeque(new ResourceBatch(implicitBatchItems));
+        List<ResourceItem<?>> items = planned.stream().<ResourceItem<?>>map(Planned::item).toList();
+        if (tracker.isExplicitBatchOpen()) {
+            items.forEach(tracker::addToCurrentBatch);
+        } else if (!items.isEmpty()) {
+            tracker.pushBatchToDeque(new ResourceBatch(items));
         }
 
-        List<CompletableFuture<Void>> promises = new ArrayList<>();
-        for (T resource : resources) {
-            ResourceType<T> type = manager.findResourceType(resource);
-            if (manager.getStoreYamlPath() != null) {
-                writeResourceAsYaml(resource);
-            }
-            if (type == null) {
-                promises.add(createOrUpdateSingle(
-                    async, waitReady, allowUpdate, resource));
-            } else {
-                promises.add(createOrUpdateSingle(
-                    async, waitReady, allowUpdate, resource, type));
-            }
+        // A loop, not a stream: start() has side effects and blocks per resource in sync mode.
+        List<CompletableFuture<Void>> promises = new ArrayList<>(planned.size());
+        for (Planned<T> next : planned) {
+            promises.add(start(next, async, waitReady));
         }
 
         try {
@@ -99,6 +93,38 @@ final class ResourceCreateService {
                 "Exception during wait for resources to be ready", cause);
             throw new IllegalStateException(cause.getMessage(), cause);
         }
+    }
+
+    /**
+     * One resource of a create call.
+     *
+     * @param resource  the object sent to the API server (a named copy for {@code generateName} input)
+     * @param item      the item that tracks the resource for cleanup
+     * @param mayUpdate whether an existing object with the same name may be updated
+     * @param <T>       the resource type
+     */
+    private record Planned<T extends HasMetadata>(T resource, ResourceItem<T> item, boolean mayUpdate) {
+    }
+
+    private <T extends HasMetadata> Planned<T> plan(T resource, boolean allowUpdate) {
+        T named = ResourceNames.withResolvedName(resource);
+        KubeResourceManager activeManager = KubeResourceManager.getForContext(manager.activeContextId());
+        ResourceItem<T> item = new ResourceItem<>(() -> activeManager.deleteResourceWithWait(named), named);
+        // A generated name is new by definition: an existing object with that name (a collision)
+        // belongs to someone else, so a generated resource is only ever created, never updated.
+        return new Planned<>(named, item, allowUpdate && named == resource);
+    }
+
+    private <T extends HasMetadata> CompletableFuture<Void> start(Planned<T> planned, boolean async,
+                                                                  boolean waitReady) {
+        T resource = planned.resource();
+        ResourceType<T> type = manager.findResourceType(resource);
+        if (manager.getStoreYamlPath() != null) {
+            writeResourceAsYaml(resource);
+        }
+        return type == null
+            ? createOrUpdateSingle(async, waitReady, planned.mayUpdate(), resource)
+            : createOrUpdateSingle(async, waitReady, planned.mayUpdate(), resource, type);
     }
 
     private <T extends HasMetadata> CompletableFuture<Void> createOrUpdateSingle(

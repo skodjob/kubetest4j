@@ -15,6 +15,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import io.fabric8.mockwebserver.http.RecordedRequest;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.annotations.ResourceManager;
 import io.skodjob.kubetest4j.annotations.TestVisualSeparator;
@@ -32,6 +33,7 @@ import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -43,9 +45,15 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -575,4 +583,139 @@ class KubeResourceManagerTest {
         assertEquals(ns, addedResource, "The added resource should match the original");
     }
 
+    @Test
+    void testDeleteWithoutNameIsRefusedAndDeletesNothing() {
+        kubernetesClient.configMaps().inNamespace("default").resource(configMap("keep")).create();
+        RuntimeException e = assertThrows(RuntimeException.class,
+            () -> KubeResourceManager.get().deleteResourceWithWait(generated("gen-")));
+        assertInstanceOf(IllegalArgumentException.class, e.getSuppressed()[0]);
+        assertTrue(e.getSuppressed()[0].getMessage().contains("metadata.name is not set"));
+        assertNotNull(kubernetesClient.configMaps().inNamespace("default").withName("keep").get());
+    }
+
+    @Test
+    void testPushToStackWithoutNameIsRefused() {
+        assertThrows(IllegalArgumentException.class,
+            () -> KubeResourceManager.get().pushToStack(generated("gen-")));
+    }
+
+    @Test
+    void testRemoveFromStackIgnoresTrackedItemWithoutName() {
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> { }, generated("gen-")));
+        KubeResourceManager.get().createResourceWithoutWait(configMap("x"));
+        assertDoesNotThrow(() -> KubeResourceManager.get().deleteResourceWithWait(configMap("x")));
+        assertTrue(KubeResourceManager.get().getCurrentResources().stream()
+            .noneMatch(r -> "x".equals(r.getMetadata().getName())));
+    }
+
+    @Test
+    void testGenerateNameCleanupDeletesOnlyCreatedObjects() {
+        kubernetesClient.configMaps().inNamespace("default").resource(configMap("keep")).create();
+        ConfigMap template = generated("gen-cleanup-");
+        KubeResourceManager.get().createResourceWithoutWait(template);
+        KubeResourceManager.get().createResourceWithoutWait(template);
+        assertEquals(2, Set.copyOf(names("gen-cleanup-")).size());
+        assertDoesNotThrow(() -> KubeResourceManager.get().deleteResources());
+        assertTrue(names("gen-cleanup-").isEmpty());
+        assertNotNull(kubernetesClient.configMaps().inNamespace("default").withName("keep").get());
+        assertNull(template.getMetadata().getName());
+    }
+
+    @Test
+    void testGenerateNameWithRegisteredResourceType() {
+        kubernetesClient.namespaces().resource(new NamespaceBuilder().withNewMetadata().withName("keep-ns")
+            .endMetadata().build()).create();
+        KubeResourceManager.get().createResourceWithWait(new NamespaceBuilder().withNewMetadata()
+            .withGenerateName("gen-ns-").endMetadata().build());
+        assertEquals(1, kubernetesClient.namespaces().list().getItems().stream()
+            .filter(n -> n.getMetadata().getName().startsWith("gen-ns-")).count());
+        assertDoesNotThrow(() -> KubeResourceManager.get().deleteResources());
+        assertTrue(kubernetesClient.namespaces().list().getItems().stream()
+            .noneMatch(n -> n.getMetadata().getName().startsWith("gen-ns-")));
+        assertNotNull(kubernetesClient.namespaces().withName("keep-ns").get());
+    }
+
+    @Test
+    void testCreateOrUpdateWithGenerateNameCreatesNewObject() {
+        assertDoesNotThrow(() -> KubeResourceManager.get().createOrUpdateResourceWithoutWait(generated("gen-cou-")));
+        assertEquals(1, names("gen-cou-").size());
+    }
+
+    @Test
+    void testCreateOrUpdateWithGenerateNameIsCreateOnly() {
+        // A generated name is new by definition: an existing object with that name (a collision)
+        // belongs to someone else and must never be looked up, updated or tracked.
+        takeRequests();
+        KubeResourceManager.get().createOrUpdateResourceWithoutWait(generated("gen-co-"));
+        List<String> calls = takeRequests().stream()
+            .filter(request -> request.getPath().contains("/configmaps"))
+            .map(RecordedRequest::getMethod)
+            .toList();
+        assertEquals(List.of("POST"), calls);
+    }
+
+    @Test
+    void testCreateCallbackReceivesGeneratedName() {
+        List<String> seen = new CopyOnWriteArrayList<>();
+        KubeResourceManager.get().addCreateCallback(r -> {
+            if (r.getMetadata().getName() != null && r.getMetadata().getName().startsWith("gen-cb-")) {
+                seen.add(r.getMetadata().getName());
+            }
+        });
+        KubeResourceManager.get().createResourceWithoutWait(generated("gen-cb-"));
+        assertEquals(1, seen.size());
+        assertTrue(seen.getFirst().matches("gen-cb-[bcdfghjklmnpqrstvwxz2456789]{5}"));
+    }
+
+    @Test
+    void testStoreYamlUsesGeneratedName(@TempDir Path dir) throws IOException {
+        KubeResourceManager.get().setStoreYamlPath(dir.toString());
+        try {
+            KubeResourceManager.get().createResourceWithoutWait(generated("gen-yaml-"));
+            try (Stream<Path> files = Files.walk(dir)) {
+                assertTrue(files.anyMatch(p -> p.getFileName().toString()
+                    .matches("ConfigMap-default-gen-yaml-[bcdfghjklmnpqrstvwxz2456789]{5}\\.yaml")));
+            }
+        } finally {
+            KubeResourceManager.get().setStoreYamlPath(null);
+        }
+    }
+
+    @Test
+    void testCreateWithoutNameOrGenerateNameFailsBeforeTracking() {
+        ConfigMap nameless = new ConfigMapBuilder().withNewMetadata().withNamespace("default").endMetadata().build();
+        assertThrows(IllegalArgumentException.class,
+            () -> KubeResourceManager.get().createResourceWithoutWait(nameless));
+        assertTrue(KubeResourceManager.get().getCurrentResources().isEmpty());
+    }
+
+    private List<String> names(String prefix) {
+        return kubernetesClient.configMaps().inNamespace("default").list().getItems().stream()
+            .map(cm -> cm.getMetadata().getName())
+            .filter(name -> name.startsWith(prefix))
+            .toList();
+    }
+
+    /** Returns, and removes from the mock server's queue, the requests it has received so far. */
+    private List<RecordedRequest> takeRequests() {
+        return Stream.generate(this::pollRequest).takeWhile(Objects::nonNull).toList();
+    }
+
+    private RecordedRequest pollRequest() {
+        try {
+            return server.takeRequest(10, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static ConfigMap configMap(String name) {
+        return new ConfigMapBuilder().withNewMetadata().withName(name).withNamespace("default").endMetadata().build();
+    }
+
+    private static ConfigMap generated(String prefix) {
+        return new ConfigMapBuilder().withNewMetadata().withGenerateName(prefix).withNamespace("default")
+            .endMetadata().build();
+    }
 }
