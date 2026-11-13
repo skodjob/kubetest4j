@@ -67,6 +67,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * prodMgr.createResourceWithWait(prodDeployment);
  * </pre>
  *
+ * <h3>Resource names</h3>
+ * A resource that sets only {@code metadata.generateName} gets a name in the same format the API
+ * server generates, on a copy, before it is created; it is created, waited for, tracked and cleaned
+ * up under that name. The caller's object is not modified, so one object can be used as a template
+ * for several creates. Deleting a resource without {@code metadata.name} is refused, because such a
+ * request would target every object of that kind.
+ *
  * <p>Implementation is split across package-private helpers:
  * <ul>
  *   <li>{@link ResourceTrackerService} — batch/stack tracking</li>
@@ -380,16 +387,19 @@ public final class KubeResourceManager {
     /* ─────────────────  PACKAGE-PRIVATE ACCESSORS  ─────────── */
 
     synchronized ResourceTrackerService tracker() {
-        if (tracker == null) {
-            tracker = new ResourceTrackerService(this, this::getTestContext,
+        // Lazy init through a local, so the returned value is provably non-null (static analysis).
+        ResourceTrackerService current = tracker;
+        if (current == null) {
+            current = new ResourceTrackerService(this, this::getTestContext,
                 r -> {
                     KubeResourceManager active =
                         getForContext(activeContextId());
                     return new ResourceItem<>(
                         () -> active.deleteResourceWithWait(r), r);
                 });
+            tracker = current;
         }
-        return tracker;
+        return current;
     }
 
     private synchronized ResourceCreateService createService() {

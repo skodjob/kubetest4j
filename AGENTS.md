@@ -150,6 +150,26 @@ Every `.java` file MUST start with this exact header:
 - **Braces:** Opening brace at end of line, braces required (single-line statements allowed)
 - **Naming:** Standard Java conventions enforced
 
+### Java 21 Style (required for all new and changed code)
+The baseline is Java 21 (`maven.compiler.release=21`). Write new code with Java 21 idioms even where the surrounding code is older; do not copy older style from nearby code. Modernize existing code in a separate commit. Using `var` is not what this rule is about.
+
+| Instead of (Java 7/8 style) | Use (Java 21) |
+|---|---|
+| Parallel arrays or lists kept in sync by index; `Object[]` or `Map.Entry` as ad-hoc tuples | A small (often private) `record` |
+| `new ArrayList<>()` plus a loop with `add` for a pure transformation | `stream()...toList()` (keep a plain loop when it has side effects, checked exceptions or an early exit) |
+| `if (x instanceof Foo) { Foo f = (Foo) x; ... }` | `if (x instanceof Foo f)`; `switch` with type patterns and `when` guards |
+| `if`/`else` chains or `switch` statements that only pick a value | `switch` expressions (`case A -> ...`) |
+| Marker interfaces with `instanceof` chains for a closed set of variants | `sealed` interface + `record`s + exhaustive `switch` |
+| `list.get(0)`, `list.get(list.size() - 1)`, reversed copies | `getFirst()`, `getLast()`, `reversed()` |
+| `Arrays.asList`, `Collections.unmodifiableList(new ArrayList<>(...))` | `List.of`, `Set.of`, `Map.of`, `List.copyOf` |
+| `String.format(...)`, multi-line string concatenation, `s.trim().isEmpty()` | `"...".formatted(...)`, text blocks (`"""`) for YAML/JSON, `isBlank()`, `strip()`, `repeat()` |
+| Ternaries or `if` for bounds | `Math.min` / `Math.max` / `Math.clamp` |
+| Anonymous inner classes for single-method interfaces | Lambdas and method references |
+| `Date`, `Calendar`, `SimpleDateFormat` | `java.time` |
+| Platform thread pools for blocking I/O | Virtual threads (`Executors.newVirtualThreadPerTaskExecutor()`), as `KubeResourceManager` does |
+
+New lookup methods return `Optional` instead of `null`; do not use `Optional` for fields or parameters.
+
 ### Logging Conventions
 ```java
 private static final Logger LOGGER = LoggerFactory.getLogger(MyClass.class);
@@ -206,6 +226,7 @@ Before writing new helper code, check if it already exists:
 - **Do NOT put resource types in the wrong module** — K8s native in `kubernetes-resources`, OpenShift in `openshift-resources`, interfaces in `kubetest4j`
 - **Do NOT use `deleteOnExit()`** — use explicit shutdown hooks with `Files.deleteIfExists()` for temp file cleanup
 - **Do NOT fire callbacks/listeners on failed operations** — callbacks should only execute after successful API calls
+- **Do NOT write Java 7/8-style code** — no parallel arrays or index bookkeeping, `get(0)`, manual accumulation loops or `String.format`; follow [Java 21 Style](#java-21-style-required-for-all-new-and-changed-code)
 
 ## Adopters
 OpenDataHub, Strimzi, Debezium, StreamsHub — all use this for E2E testing.

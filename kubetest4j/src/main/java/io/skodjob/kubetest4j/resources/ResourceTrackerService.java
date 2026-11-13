@@ -64,6 +64,7 @@ final class ResourceTrackerService {
     // ───────────────────────  PUSH / REMOVE  ───────────────────
 
     <T extends HasMetadata> void pushToStack(T resource) {
+        ResourceNames.requireName(resource, "track");
         ResourceItem<?> item = itemFactory.apply(resource);
         List<ResourceItem<?>> batch = getOpenBatch();
         if (batch != null) {
@@ -110,12 +111,14 @@ final class ResourceTrackerService {
         }
         for (ResourceBatch batch : batches) {
             batch.removeIf(item -> item.resource() != null
+                && item.resource().getMetadata() != null
                 && item.resource().getKind().equals(resource.getKind())
                 && Objects.equals(
                     item.resource().getMetadata().getNamespace(),
                     resource.getMetadata().getNamespace())
-                && item.resource().getMetadata().getName()
-                    .equals(resource.getMetadata().getName()));
+                && Objects.equals(
+                    item.resource().getMetadata().getName(),
+                    resource.getMetadata().getName()));
         }
         batches.removeIf(ResourceBatch::isEmpty);
     }

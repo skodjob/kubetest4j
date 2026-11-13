@@ -214,6 +214,8 @@ final class ResourceDeleteService {
     // ───────────────────────  DELETE HELPERS  ────────────────────
 
     <T extends HasMetadata> void issueDeletion(T resource) {
+        // Without a name the DELETE would target the whole collection of this kind.
+        ResourceNames.requireName(resource, "delete");
         ResourceType<T> type = manager.findResourceType(resource);
         if (type == null) {
             manager.kubeClient().getClient()
