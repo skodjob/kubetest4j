@@ -9,6 +9,7 @@ import io.skodjob.kubetest4j.annotations.KubernetesTest;
 import io.skodjob.kubetest4j.annotations.LogCollectionStrategy;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -26,11 +27,15 @@ import java.lang.reflect.Parameter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +44,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for KubernetesTestExtension.
@@ -417,7 +423,7 @@ class KubernetesTestExtensionTest {
             KubeResourceManager mockManager = mock(KubeResourceManager.class);
             lenient().when(mockHelper.getResourceManager(any())).thenReturn(mockManager);
             doThrow(new RuntimeException("cleanup failed"))
-                .when(mockManager).deleteResources(anyBoolean());
+                .when(mockManager).deleteResourcesInAllKubeContexts(anyBoolean());
 
             lenient().when(mockHelper.getPreviousResourceTypes(any())).thenReturn(null);
             lenient().when(mockHelper.getContextManagers(any())).thenReturn(null);
@@ -452,7 +458,7 @@ class KubernetesTestExtensionTest {
             KubeResourceManager mockManager = mock(KubeResourceManager.class);
             lenient().when(mockHelper.getResourceManager(any())).thenReturn(mockManager);
             doThrow(new RuntimeException("cleanup failed"))
-                .when(mockManager).deleteResources(anyBoolean());
+                .when(mockManager).deleteResourcesInAllKubeContexts(anyBoolean());
 
             ExtensionContext mockContext = mock(ExtensionContext.class);
             lenient().when(mockContext.getRequiredTestClass())
@@ -466,6 +472,63 @@ class KubernetesTestExtensionTest {
             RuntimeException thrown = assertThrows(RuntimeException.class,
                 () -> ext.afterEach(mockContext));
             assertEquals("cleanup failed", thrown.getMessage());
+        }
+    }
+
+    @Nested
+    @DisplayName("Kube Context Manager Resolution Tests")
+    class KubeContextManagerResolutionTests {
+
+        private ContextStoreHelper mockHelper;
+        private ExtensionContext ctx;
+        private KubeResourceManager primaryManager;
+        private KubernetesTestExtension ext;
+        private Map<String, KubeResourceManager> managers;
+
+        @BeforeEach
+        void setUp() {
+            mockHelper = mock(ContextStoreHelper.class);
+            ctx = mock(ExtensionContext.class);
+            primaryManager = mock(KubeResourceManager.class);
+            ext = new KubernetesTestExtension(mockHelper);
+            managers = new ConcurrentHashMap<>();
+            lenient().when(mockHelper.getOrCreateContextManagers(ctx)).thenReturn(managers);
+        }
+
+        /**
+         * Resolving a kube context binds the mock test context to this thread.
+         */
+        @AfterEach
+        void unbindTestContext() {
+            KubeResourceManager.get().cleanTestContext();
+        }
+
+        @Test
+        @DisplayName("Kube context ids that differ only in case share one manager")
+        void kubeContextIdsDifferingInCaseShareOneManager() {
+            // staging resolves because Surefire exports KUBECONFIG_STAGING
+            KubeResourceManager upper = ext.getResourceManagerForKubeContext(ctx, "STAGING");
+            assertSame(upper, ext.getResourceManagerForKubeContext(ctx, "staging"));
+            assertSame(KubeResourceManager.getForContext("staging"), upper);
+            assertEquals(Set.of("staging"), managers.keySet());
+        }
+
+        @Test
+        @DisplayName("The primary kube context resolves to the primary manager")
+        void primaryKubeContextResolvesToPrimaryManager() {
+            when(mockHelper.getResourceManager(ctx)).thenReturn(primaryManager);
+            assertSame(primaryManager, ext.getResourceManagerForKubeContext(ctx, "PRIMARY"));
+            assertTrue(managers.isEmpty());
+        }
+
+        @Test
+        @DisplayName("An unknown kube context fails fast")
+        void unknownKubeContextFailsFast() {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> ext.getResourceManagerForKubeContext(ctx, "stagng"));
+            assertEquals("Unknown kubeContext 'stagng'. Define env vars [KUBE_URL|KUBE_TOKEN|KUBECONFIG]_STAGNG",
+                e.getMessage());
+            assertTrue(managers.isEmpty());
         }
     }
 

@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -150,7 +151,7 @@ public final class KubeResourceManager {
     public static KubeResourceManager getForContext(String contextId) {
         String normalizedContextId = Optional.ofNullable(contextId)
             .orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME)
-            .toLowerCase();
+            .toLowerCase(Locale.ROOT);
         return CONTEXT_INSTANCES.computeIfAbsent(normalizedContextId,
             KubeResourceManager::new);
     }
@@ -164,13 +165,13 @@ public final class KubeResourceManager {
     public AutoCloseable useContext(String id) {
         String ctxId = Optional.ofNullable(id)
             .orElse(KubeTestConstants.DEFAULT_CONTEXT_NAME)
-            .toLowerCase();
+            .toLowerCase(Locale.ROOT);
 
         if (!CLUSTER_CONFIGS.containsKey(ctxId)) {
             throw new IllegalArgumentException(
                 "Unknown context '" + ctxId
                     + "'. Define env vars [KUBE_URL|KUBE_TOKEN|KUBECONFIG]_"
-                    + ctxId.toUpperCase());
+                    + ctxId.toUpperCase(Locale.ROOT));
         }
 
         LOGGER.info("Switching to context {}", ctxId);
@@ -574,6 +575,17 @@ public final class KubeResourceManager {
         tracker().clearCurrentBatch();
     }
 
+    /**
+     * Flushes every explicit batch open on this thread, in every kube context, to the deque of
+     * its own kube context. Safety net for lifecycle callbacks: a batch left open in any kube
+     * context is still cleaned up and does not leak into the next test. {@link #clearCurrentBatch()}
+     * flushes only the batch of this manager's kube context.
+     */
+    public void clearCurrentBatchesInAllKubeContexts() {
+        ResourceTrackerService.kubeContextsWithOpenBatch()
+            .forEach(contextId -> getForContext(contextId).clearCurrentBatch());
+    }
+
     /* ─────────────────  RESOURCE I/O  ─────────────────────── */
 
     /**
@@ -848,19 +860,51 @@ public final class KubeResourceManager {
     /* ─────────────────  BULK CLEANUP  ─────────────────────── */
 
     /**
-     * Deletes all stored resources (async, batch-LIFO order).
+     * Deletes the resources the current test tracked through this manager (async, batch-LIFO
+     * order). Resources created through {@code getForContext("x")} are tracked by that manager.
+     * Resources created through {@code get()} inside {@link #useContext(String) useContext("x")} are
+     * tracked by the primary manager, so {@code get().deleteResources()} deletes them and
+     * {@code getForContext("x").deleteResources()} does not. To clean everything the test tracked,
+     * call {@link #deleteResourcesInAllKubeContexts(boolean)}.
      */
     public void deleteResources() {
         deleteService().deleteResources(true);
     }
 
     /**
-     * Deletes all stored resources in batch-LIFO order.
+     * Deletes the resources the current test tracked through this manager, in batch-LIFO order.
+     * Resources created through {@code getForContext("x")} are tracked by that manager. Resources
+     * created through {@code get()} inside {@link #useContext(String) useContext("x")} are tracked by
+     * the primary manager, so {@code get().deleteResources(async)} deletes them and
+     * {@code getForContext("x").deleteResources(async)} does not. To clean everything the test
+     * tracked, call {@link #deleteResourcesInAllKubeContexts(boolean)}.
      *
      * @param async if true, items within a batch are deleted concurrently
      */
     public void deleteResources(boolean async) {
         deleteService().deleteResources(async);
+    }
+
+    /**
+     * Deletes the resources the current test tracks in <b>every</b> kube context, not only in the
+     * kube context of this manager. It behaves the same whichever manager it is called on.
+     *
+     * <p>The kube contexts are drained as one LIFO stack: the batch created last, in any kube
+     * context, is deleted first. An explicit batch takes its place in that order when it is closed
+     * ({@link #endBatch()}, or the flush in {@link #clearCurrentBatchesInAllKubeContexts()}), not when
+     * it is opened. An item tracked in another kube context while the batch was open is therefore
+     * deleted after the whole batch. Items inside a batch are deleted as in
+     * {@link #deleteResources(boolean)}. A failure does not stop the cleanup of the remaining batches.
+     *
+     * <p>Like {@link #deleteResources(boolean)}, resources are tracked under the test's display name,
+     * so two tests with the same display name running at the same time share what they track.
+     *
+     * @param async if true, items within a batch are deleted concurrently
+     * @throws RuntimeException if at least one deletion failed, with each error added as suppressed,
+     *                          exactly as {@link #deleteResources(boolean)} reports it
+     */
+    public void deleteResourcesInAllKubeContexts(boolean async) {
+        deleteService().deleteResourcesInAllKubeContexts(async);
     }
 
     /* ─────────────────  SHARED HELPERS  ────────────────────── */

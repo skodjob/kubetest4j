@@ -226,11 +226,6 @@ class ContextStoreHelper {
     // Context-Specific Convenience Methods
     // ===============================
 
-    public KubeResourceManager getContextManager(ExtensionContext context, String clusterContext) {
-        Map<String, KubeResourceManager> contextManagers = getOrCreateContextManagers(context);
-        return contextManagers.get(clusterContext);
-    }
-
     public void putContextManager(ExtensionContext context, String clusterContext, KubeResourceManager manager) {
         Map<String, KubeResourceManager> contextManagers = getOrCreateContextManagers(context);
         contextManagers.put(clusterContext, manager);

@@ -14,12 +14,14 @@ import org.slf4j.event.Level;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -33,8 +35,20 @@ final class ResourceTrackerService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ResourceTrackerService.class);
 
-    static final Map<String, Map<String, Deque<ResourceBatch>>> STORED_RESOURCES =
+    /**
+     * A batch on a stack, with the global order in which it landed there. Cleanup across kube contexts
+     * deletes the batch with the highest order first.
+     *
+     * @param order position in the global creation order across every kube context
+     * @param batch the tracked batch
+     */
+    record TrackedBatch(long order, ResourceBatch batch) {
+    }
+
+    static final Map<String, Map<String, Deque<TrackedBatch>>> STORED_RESOURCES =
         new ConcurrentHashMap<>();
+
+    private static final AtomicLong NEXT_ORDER = new AtomicLong();
 
     private static final ThreadLocal<Map<String, List<ResourceItem<?>>>> CURRENT_BATCH =
         new ThreadLocal<>();
@@ -89,15 +103,19 @@ final class ResourceTrackerService {
     }
 
     void pushBatchToDeque(ResourceBatch batch) {
+        // One compute: the order is taken and the batch appended atomically, so a stack stays in
+        // creation order and forget() cannot drop the stack between the lookup and the append.
         STORED_RESOURCES
             .computeIfAbsent(manager.contextId(), c -> new ConcurrentHashMap<>())
-            .computeIfAbsent(testContextSupplier.get().getDisplayName(),
-                t -> new ConcurrentLinkedDeque<>())
-            .addLast(batch);
+            .compute(testContextSupplier.get().getDisplayName(), (test, stack) -> {
+                Deque<TrackedBatch> target = stack != null ? stack : new ConcurrentLinkedDeque<>();
+                target.addLast(new TrackedBatch(NEXT_ORDER.incrementAndGet(), batch));
+                return target;
+            });
     }
 
     <T extends HasMetadata> void removeFromStack(T resource) {
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
+        Map<String, Deque<TrackedBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest == null) {
             return;
         }
@@ -105,12 +123,12 @@ final class ResourceTrackerService {
         if (ctx == null) {
             return;
         }
-        Deque<ResourceBatch> batches = byTest.get(ctx.getDisplayName());
+        Deque<TrackedBatch> batches = byTest.get(ctx.getDisplayName());
         if (batches == null) {
             return;
         }
-        for (ResourceBatch batch : batches) {
-            batch.removeIf(item -> item.resource() != null
+        for (TrackedBatch tracked : batches) {
+            tracked.batch().removeIf(item -> item.resource() != null
                 && item.resource().getMetadata() != null
                 && item.resource().getKind().equals(resource.getKind())
                 && Objects.equals(
@@ -120,7 +138,7 @@ final class ResourceTrackerService {
                     item.resource().getMetadata().getName(),
                     resource.getMetadata().getName()));
         }
-        batches.removeIf(ResourceBatch::isEmpty);
+        batches.removeIf(tracked -> tracked.batch().isEmpty());
     }
 
     // ───────────────────────  BATCH API  ───────────────────────
@@ -172,6 +190,17 @@ final class ResourceTrackerService {
         return this::endBatch;
     }
 
+    /**
+     * Returns the ids of every kube context that has an explicit batch open on this thread.
+     *
+     * @return the kube context ids, empty if no batch is open
+     */
+    static List<String> kubeContextsWithOpenBatch() {
+        return Optional.ofNullable(CURRENT_BATCH.get())
+            .<List<String>>map(open -> List.copyOf(open.keySet()))
+            .orElse(List.of());
+    }
+
     void clearCurrentBatch() {
         Map<String, List<ResourceItem<?>>> map = CURRENT_BATCH.get();
         if (map == null) {
@@ -194,8 +223,8 @@ final class ResourceTrackerService {
             .map(m -> m.get(test))
             .map(batches -> {
                 List<HasMetadata> resources = new ArrayList<>();
-                for (ResourceBatch batch : batches) {
-                    for (ResourceItem<?> item : batch.items()) {
+                for (TrackedBatch tracked : batches) {
+                    for (ResourceItem<?> item : tracked.batch().items()) {
                         if (item.resource() != null) {
                             resources.add(item.resource());
                         }
@@ -210,11 +239,18 @@ final class ResourceTrackerService {
         LOGGER.atLevel(logLevel).log(
             "Printing all managed resources across all contexts");
         STORED_RESOURCES.forEach((ctxId, byTest) -> {
+            List<Map.Entry<String, Deque<TrackedBatch>>> tests = byTest.entrySet().stream()
+                .filter(test -> !test.getValue().isEmpty())
+                .toList();
+            if (tests.isEmpty()) {
+                return;
+            }
             LOGGER.atLevel(logLevel).log("Context [{}]", ctxId);
-            byTest.forEach((test, batches) -> {
-                LOGGER.atLevel(logLevel).log("  Test: {}", test);
+            tests.forEach(test -> {
+                LOGGER.atLevel(logLevel).log("  Test: {}", test.getKey());
                 int batchIndex = 0;
-                for (ResourceBatch batch : batches) {
+                for (TrackedBatch tracked : test.getValue()) {
+                    ResourceBatch batch = tracked.batch();
                     LOGGER.atLevel(logLevel).log(
                         "Batch #{} ({} items)", batchIndex, batch.size());
                     for (ResourceItem<?> item : batch.items()) {
@@ -236,7 +272,8 @@ final class ResourceTrackerService {
             .map(m -> m.get(test))
             .ifPresent(batches -> {
                 int batchIndex = 0;
-                for (ResourceBatch batch : batches) {
+                for (TrackedBatch tracked : batches) {
+                    ResourceBatch batch = tracked.batch();
                     LOGGER.atLevel(logLevel).log(
                         "Batch #{} ({} items)", batchIndex, batch.size());
                     for (ResourceItem<?> item : batch.items()) {
@@ -251,18 +288,44 @@ final class ResourceTrackerService {
 
     // ───────────────────────  CLEANUP ACCESSORS  ───────────────
 
-    Deque<ResourceBatch> getBatches() {
+    Deque<TrackedBatch> getBatches() {
         String testName = testContextSupplier.get().getDisplayName();
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
+        Map<String, Deque<TrackedBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest == null) {
             return null;
         }
         return byTest.get(testName);
     }
 
+    /**
+     * Returns the stack of the given test in every kube context that has one, empty stacks included.
+     *
+     * @param testName the display name the test is tracked under
+     * @return kube context id mapped to the live stack of the test
+     */
+    static Map<String, Deque<TrackedBatch>> stacksOf(String testName) {
+        Map<String, Deque<TrackedBatch>> stacks = new HashMap<>();
+        STORED_RESOURCES.forEach((contextId, byTest) ->
+            Optional.ofNullable(byTest.get(testName)).ifPresent(stack -> stacks.put(contextId, stack)));
+        return stacks;
+    }
+
+    /**
+     * Stops tracking the given stacks of a test. A stack is removed only while it is still the tracked
+     * stack and empty, so a batch pushed in the meantime stays tracked.
+     *
+     * @param testName the display name the test is tracked under
+     * @param stacks   the stacks returned by {@link #stacksOf(String)}
+     */
+    static void forget(String testName, Map<String, Deque<TrackedBatch>> stacks) {
+        stacks.forEach((contextId, stack) -> Optional.ofNullable(STORED_RESOURCES.get(contextId))
+            .ifPresent(byTest -> byTest.computeIfPresent(testName,
+                (test, tracked) -> tracked == stack && tracked.isEmpty() ? null : tracked)));
+    }
+
     void cleanupAfterDelete() {
         String testName = testContextSupplier.get().getDisplayName();
-        Map<String, Deque<ResourceBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
+        Map<String, Deque<TrackedBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
         if (byTest != null) {
             byTest.remove(testName);
         }

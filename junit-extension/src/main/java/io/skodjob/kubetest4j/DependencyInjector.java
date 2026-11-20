@@ -39,17 +39,21 @@ class DependencyInjector {
 
     private final ContextStoreHelper contextStoreHelper;
     private final MethodNamespaceService methodNamespaceService;
+    private final NamespaceService.MultiKubeContextProvider multiContextProvider;
 
     /**
      * Creates a new DependencyInjector with the given dependencies.
      *
      * @param contextStoreHelper      provides access to extension kubeContext storage
      * @param methodNamespaceService  provides method namespace resolution
+     * @param multiContextProvider    gets or creates the resource manager of a kubeContext
      */
     DependencyInjector(ContextStoreHelper contextStoreHelper,
-                       MethodNamespaceService methodNamespaceService) {
+                       MethodNamespaceService methodNamespaceService,
+                       NamespaceService.MultiKubeContextProvider multiContextProvider) {
         this.contextStoreHelper = contextStoreHelper;
         this.methodNamespaceService = methodNamespaceService;
+        this.multiContextProvider = multiContextProvider;
     }
 
     // ===============================
@@ -166,42 +170,21 @@ class DependencyInjector {
      * Unified KubeClient injection logic.
      */
     private KubeClient injectKubeClient(InjectKubeClient annotation, ExtensionContext context) {
-        String clusterContext = annotation.kubeContext();
-
-        KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
-        if (resourceManager == null) {
-            throw new RuntimeException("KubeResourceManager not available for kubeContext: " +
-                (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
-        }
-        return resourceManager.kubeClient();
+        return requireResourceManager(context, annotation.kubeContext()).kubeClient();
     }
 
     /**
      * Unified CmdKubeClient injection logic.
      */
     private KubeCmdClient<?> injectCmdKubeClient(InjectCmdKubeClient annotation, ExtensionContext context) {
-        String clusterContext = annotation.kubeContext();
-
-        KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
-        if (resourceManager == null) {
-            throw new RuntimeException("KubeResourceManager not available for kubeContext: " +
-                (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
-        }
-        return resourceManager.kubeCmdClient();
+        return requireResourceManager(context, annotation.kubeContext()).kubeCmdClient();
     }
 
     /**
      * Unified ResourceManager injection logic.
      */
     private KubeResourceManager injectResourceManager(InjectResourceManager annotation, ExtensionContext context) {
-        String clusterContext = annotation.kubeContext();
-
-        KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
-        if (resourceManager == null) {
-            throw new RuntimeException("KubeResourceManager not available for kubeContext: " +
-                (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
-        }
-        return resourceManager;
+        return requireResourceManager(context, annotation.kubeContext());
     }
 
     /**
@@ -211,13 +194,7 @@ class DependencyInjector {
     private <T extends HasMetadata> T injectResource(InjectResource annotation, Class<?> targetType,
                                                      ExtensionContext context) {
         try {
-            String clusterContext = annotation.kubeContext();
-            KubeResourceManager resourceManager = getResourceManagerForContext(context, clusterContext);
-
-            if (resourceManager == null) {
-                throw new RuntimeException("KubeResourceManager not available for kubeContext: " +
-                    (clusterContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : clusterContext));
-            }
+            KubeResourceManager resourceManager = requireResourceManager(context, annotation.kubeContext());
 
             List<HasMetadata> resources = loadResources(annotation.value(), resourceManager, context);
 
@@ -293,12 +270,21 @@ class DependencyInjector {
     // Helper Methods
     // ===============================
 
-    private KubeResourceManager getResourceManagerForContext(ExtensionContext context, String clusterContext) {
-        if (clusterContext.isEmpty()) {
-            return contextStoreHelper.getResourceManager(context);
-        } else {
-            return contextStoreHelper.getContextManager(context, clusterContext);
+    /**
+     * Returns the resource manager of the given kubeContext: the primary one for an empty id, otherwise
+     * the one the provider gets or creates.
+     *
+     * @throws RuntimeException if no manager is available
+     */
+    private KubeResourceManager requireResourceManager(ExtensionContext context, String kubeContext) {
+        KubeResourceManager resourceManager = kubeContext.isEmpty()
+            ? contextStoreHelper.getResourceManager(context)
+            : multiContextProvider.getResourceManagerForKubeContext(context, kubeContext);
+        if (resourceManager == null) {
+            throw new RuntimeException("KubeResourceManager not available for kubeContext: "
+                + (kubeContext.isEmpty() ? KubeTestConstants.DEFAULT_CONTEXT_NAME : kubeContext));
         }
+        return resourceManager;
     }
 
     // ===============================

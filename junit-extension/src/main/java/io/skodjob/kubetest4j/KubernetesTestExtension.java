@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Paths;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -107,7 +108,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         this.methodNamespaceService = new MethodNamespaceService(contextStoreHelper, this);
 
         // Create dependency injector with namespace support
-        this.dependencyInjector = new DependencyInjector(contextStoreHelper, methodNamespaceService);
+        this.dependencyInjector = new DependencyInjector(contextStoreHelper, methodNamespaceService, this);
 
         // Create log collection manager with kubeContext provider
         this.logCollectionService = new LogCollectionService(contextStoreHelper, configurationService, this);
@@ -239,7 +240,7 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
         KubeResourceManager resourceManager = contextStoreHelper.getResourceManager(context);
         if (resourceManager != null) {
             resourceManager.setTestContext(context);
-            resourceManager.clearCurrentBatch();
+            resourceManager.clearCurrentBatchesInAllKubeContexts();
         }
 
         // Collect logs if configured for AFTER_EACH (successful completion)
@@ -425,8 +426,8 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
                 return;
             }
             resourceManager.setTestContext(context);
-            resourceManager.clearCurrentBatch();
-            resourceManager.deleteResources(true);
+            resourceManager.clearCurrentBatchesInAllKubeContexts();
+            resourceManager.deleteResourcesInAllKubeContexts(true);
         }
     }
 
@@ -469,14 +470,29 @@ public class KubernetesTestExtension implements BeforeAllCallback, AfterAllCallb
 
     /**
      * Gets or creates a KubeResourceManager for the specified kubeContext.
+     *
+     * <p>The id is case-insensitive. An empty id or {@code primary} resolves to the primary manager,
+     * which is never registered as an additional kubeContext.
+     *
+     * @throws IllegalArgumentException if no credentials are configured for the kubeContext
      */
     @Override
     public KubeResourceManager getResourceManagerForKubeContext(ExtensionContext context, String kubeContext) {
+        String id = kubeContext.toLowerCase(Locale.ROOT);
+        if (id.isEmpty() || KubeTestConstants.DEFAULT_CONTEXT_NAME.equals(id)) {
+            return contextStoreHelper.getResourceManager(context);
+        }
+        if (!KubeTestEnv.CLUSTER_CONFIGS.containsKey(id)) {
+            throw new IllegalArgumentException(
+                "Unknown kubeContext '%s'. Define env vars [KUBE_URL|KUBE_TOKEN|KUBECONFIG]_%s"
+                    .formatted(id, id.toUpperCase(Locale.ROOT)));
+        }
+
         // Get the cache of kubeContext managers
         Map<String, KubeResourceManager> contextManagers = contextStoreHelper.getOrCreateContextManagers(context);
 
         // Get or create resource manager for this kubeContext
-        return contextManagers.computeIfAbsent(kubeContext, ctx -> {
+        return contextManagers.computeIfAbsent(id, ctx -> {
             LOGGER.debug("Creating ResourceManager for kubeContext {}", ctx);
 
             try {
