@@ -79,17 +79,17 @@ int count = resources.size();
 
 ### Automatic cleanup (via `@KubernetesTest` or `@ResourceManager`)
 
-When you annotate a test class with `@KubernetesTest` (cleanup default is `AUTOMATIC`) or `@ResourceManager`, the framework calls `deleteResources()` after each test method. You do not need to call it manually.
+When you annotate a test class with `@KubernetesTest` (cleanup default is `AUTOMATIC`) or `@ResourceManager`, the framework calls `deleteResourcesInAllKubeContexts(...)` after each test method and after the class. It deletes what the test tracks in every kube context it used, newest first across all of them, as one LIFO stack. An explicit batch takes its place in that order when it is closed, not when it is opened, so an item tracked in another kube context while the batch was open is deleted after the whole batch. You do not need to call it manually.
 
 ### Manual cleanup
 
 If you set `cleanup = CleanupStrategy.MANUAL` on `@KubernetesTest`, or use `@ResourceManager(cleanResources = false)`, you are responsible for calling:
 
 ```java
-KubeResourceManager.get().deleteResources();
+KubeResourceManager.get().deleteResourcesInAllKubeContexts(true);
 ```
 
-Call it in an `@AfterEach` method or wherever it fits your test lifecycle.
+Call it in an `@AfterEach` method or wherever it fits your test lifecycle. `deleteResources()` deletes only what the test tracked through the manager you call it on. Resources created through `getForContext("x")` (or `kubeContext = "x"`) are tracked by that manager. Resources created through `get()` inside `useContext("x")` are tracked by the primary manager. To clean everything the test tracked, call `deleteResourcesInAllKubeContexts(...)`.
 
 ### Deleting a single resource
 

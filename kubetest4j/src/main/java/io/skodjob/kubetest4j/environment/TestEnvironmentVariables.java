@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -230,12 +231,12 @@ public class TestEnvironmentVariables {
 
         keySource.stream()
             .filter(k -> k.startsWith("KUBECONFIG_") || k.startsWith("KUBE_URL_") || k.startsWith("KUBE_TOKEN_"))
-            .map(k -> k.substring(k.lastIndexOf('_') + 1).toLowerCase())
+            .map(k -> k.substring(k.lastIndexOf('_') + 1).toLowerCase(Locale.ROOT))
             .distinct()
             .forEach(id -> {
-                String kc = getOrDefault("KUBECONFIG_" + id.toUpperCase(), null);
-                String url = getOrDefault("KUBE_URL_" + id.toUpperCase(), null);
-                String tok = getOrDefault("KUBE_TOKEN_" + id.toUpperCase(), null);
+                String kc = getOrDefault("KUBECONFIG_" + id.toUpperCase(Locale.ROOT), null);
+                String url = getOrDefault("KUBE_URL_" + id.toUpperCase(Locale.ROOT), null);
+                String tok = getOrDefault("KUBE_TOKEN_" + id.toUpperCase(Locale.ROOT), null);
 
                 if (kc != null) {
                     out.put(id, new ClusterConfig(null, null, kc));

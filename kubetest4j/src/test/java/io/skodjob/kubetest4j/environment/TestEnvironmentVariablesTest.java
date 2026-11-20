@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -84,6 +85,26 @@ class TestEnvironmentVariablesTest {
         assertEquals("https://dev.example.com:6443", configs.get("dev").url());
         assertEquals("dev-token", configs.get("dev").token());
         assertNull(configs.get("dev").kubeconfigPath());
+    }
+
+    @Test
+    void testDiscoverClusterConfigsIgnoresDefaultLocale() {
+        Locale previous = Locale.getDefault();
+        // Turkish lower-cases 'I' to a dotless 'ı'
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            Map<String, String> sysProps = Map.of(
+                "KUBE_URL_INFRA", "https://infra.example.com:6443",
+                "KUBE_TOKEN_INFRA", "infra-token"
+            );
+            Map<String, TestEnvironmentVariables.ClusterConfig> configs =
+                new TestEnvironmentVariables(Collections.emptyMap(), sysProps).discoverClusterConfigs();
+
+            assertNotNull(configs.get("infra"), () -> "context ids: " + configs.keySet());
+            assertEquals("https://infra.example.com:6443", configs.get("infra").url());
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     public static class MyEnvs {

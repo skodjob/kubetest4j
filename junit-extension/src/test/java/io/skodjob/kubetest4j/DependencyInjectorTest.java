@@ -34,9 +34,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,11 +73,14 @@ class DependencyInjectorTest {
     @Mock
     private MethodNamespaceService methodNamespaceService;
 
+    @Mock
+    private NamespaceService.MultiKubeContextProvider multiContextProvider;
+
     private DependencyInjector dependencyInjector;
 
     @BeforeEach
     void setUp() {
-        dependencyInjector = new DependencyInjector(contextStoreHelper, methodNamespaceService);
+        dependencyInjector = new DependencyInjector(contextStoreHelper, methodNamespaceService, multiContextProvider);
 
         // Setup common mocks
         lenient().when(parameterContext.getParameter()).thenReturn(parameter);
@@ -304,6 +309,25 @@ class DependencyInjectorTest {
         }
 
         @Test
+        @DisplayName("Should resolve a kubeContext manager through the provider")
+        void testKubeContextInjectionResolvesManagerThroughProvider() {
+            // Given
+            TestClassWithContextField testInstance = new TestClassWithContextField();
+            KubeResourceManager qaManager = mock(KubeResourceManager.class);
+            KubeClient qaClient = mock(KubeClient.class);
+            when(extensionContext.getTestInstance()).thenReturn(Optional.of(testInstance));
+            when(extensionContext.getRequiredTestClass()).thenReturn((Class) TestClassWithContextField.class);
+            when(multiContextProvider.getResourceManagerForKubeContext(extensionContext, "qa")).thenReturn(qaManager);
+            when(qaManager.kubeClient()).thenReturn(qaClient);
+
+            // When
+            dependencyInjector.injectTestClassFields(extensionContext);
+
+            // Then
+            assertSame(qaClient, testInstance.client);
+        }
+
+        @Test
         @DisplayName("Should handle missing test instance gracefully")
         void shouldHandleMissingTestInstanceGracefully() {
             // Given
@@ -339,7 +363,8 @@ class DependencyInjectorTest {
             InjectKubeClient annotation = createInjectKubeClientAnnotation("staging");
             when(parameterContext.isAnnotated(InjectKubeClient.class)).thenReturn(true);
             when(parameter.getAnnotation(InjectKubeClient.class)).thenReturn(annotation);
-            when(contextStoreHelper.getContextManager(extensionContext, "staging")).thenReturn(resourceManager);
+            when(multiContextProvider.getResourceManagerForKubeContext(extensionContext, "staging"))
+                .thenReturn(resourceManager);
 
             // When
             Object result = dependencyInjector.resolveParameter(parameterContext, extensionContext);
@@ -349,19 +374,19 @@ class DependencyInjectorTest {
         }
 
         @Test
-        @DisplayName("Should throw exception when context manager not available")
-        void shouldThrowExceptionWhenContextManagerNotAvailable() {
+        @DisplayName("Should throw exception when the primary manager is not available")
+        void shouldThrowExceptionWhenPrimaryManagerNotAvailable() {
             // Given
-            InjectKubeClient annotation = createInjectKubeClientAnnotation("nonexistent");
+            InjectKubeClient annotation = createInjectKubeClientAnnotation("");
             when(parameterContext.isAnnotated(InjectKubeClient.class)).thenReturn(true);
             when(parameter.getAnnotation(InjectKubeClient.class)).thenReturn(annotation);
-            when(contextStoreHelper.getContextManager(extensionContext, "nonexistent")).thenReturn(null);
+            when(contextStoreHelper.getResourceManager(extensionContext)).thenReturn(null);
 
             // When & Then
             RuntimeException exception = assertThrows(RuntimeException.class,
                 () -> dependencyInjector.resolveParameter(parameterContext, extensionContext));
             assertTrue(exception.getMessage()
-                .contains("KubeResourceManager not available for kubeContext: nonexistent"));
+                .contains("KubeResourceManager not available for kubeContext: primary"));
         }
     }
 
@@ -489,6 +514,11 @@ class DependencyInjectorTest {
 
         @InjectResourceManager
         KubeResourceManager resourceManager;
+    }
+
+    static class TestClassWithContextField {
+        @InjectKubeClient(kubeContext = "qa")
+        KubeClient client;
     }
 
     // Mock annotation creation methods
