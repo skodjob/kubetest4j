@@ -31,9 +31,12 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -42,13 +45,16 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -56,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,16 +73,24 @@ class KubeResourceManagerTest {
     private KubernetesClient kubernetesClient;
     private KubernetesMockServer server;
 
-    @BeforeEach
-    void setupClient() {
-        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
-        KubeResourceManager.get().setResourceTypes(new NamespaceType());
+    /**
+     * Registers the logging callbacks once. Callbacks are JVM-wide and cannot be removed, so registering
+     * them per test would stack one more copy for every test method, including in later test classes.
+     */
+    @BeforeAll
+    static void registerLoggingCallbacks() {
         KubeResourceManager.get().addCreateCallback(r ->
             LoggerUtils.logResource("Create", r)
         );
         KubeResourceManager.get().addDeleteCallback(r ->
             LoggerUtils.logResource("Delete", r)
         );
+    }
+
+    @BeforeEach
+    void setupClient() {
+        KubeResourceManager.get().kubeClient().testReconnect(kubernetesClient.getConfiguration());
+        KubeResourceManager.get().setResourceTypes(new NamespaceType());
     }
 
     @Test
@@ -709,6 +724,124 @@ class KubeResourceManagerTest {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    void testDeleteResourcesInAllKubeContextsDeletesInReverseCreationOrder() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> cleaned.add("qa-1")));
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> cleaned.add("primary")));
+        KubeResourceManager.getForContext("dev").pushToStack(new ResourceItem<>(() -> cleaned.add("dev")));
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> cleaned.add("qa-2")));
+        KubeResourceManager.get().deleteResourcesInAllKubeContexts(true);
+        assertEquals(List.of("qa-2", "dev", "primary", "qa-1"), cleaned);
+    }
+
+    @Test
+    void testDeleteResourcesInAllKubeContextsOrdersExplicitBatchByItsEnd() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager primary = KubeResourceManager.get();
+        primary.startBatch();
+        primary.pushToStack(new ResourceItem<>(() -> cleaned.add("primary-a")));
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> cleaned.add("qa")));
+        primary.pushToStack(new ResourceItem<>(() -> cleaned.add("primary-b")));
+        primary.endBatch();
+        // sync: the items of one batch are deleted in list order
+        primary.deleteResourcesInAllKubeContexts(false);
+        assertEquals(List.of("primary-a", "primary-b", "qa"), cleaned);
+    }
+
+    @Test
+    void testDeleteResourcesInAllKubeContextsContinuesAfterFailure() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> cleaned.add("primary")));
+        // newest item, so it is deleted first
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> {
+            throw new IllegalStateException("qa unreachable");
+        }));
+        KubeResourceManager krm = KubeResourceManager.get();
+        RuntimeException e = assertThrows(RuntimeException.class, () -> krm.deleteResourcesInAllKubeContexts(true));
+        assertEquals("Failed to delete 1 resource(s)", e.getMessage());
+        assertEquals(1, e.getSuppressed().length);
+        assertEquals(List.of("primary"), cleaned);
+    }
+
+    @Test
+    void testDeleteResourcesInAllKubeContextsReportsEveryFailureInSyncMode() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> {
+            throw new IllegalStateException("qa unreachable");
+        }));
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> cleaned.add("primary")));
+        KubeResourceManager.getForContext("dev").pushToStack(new ResourceItem<>(() -> {
+            throw new IllegalStateException("dev unreachable");
+        }));
+        KubeResourceManager krm = KubeResourceManager.get();
+        RuntimeException e = assertThrows(RuntimeException.class, () -> krm.deleteResourcesInAllKubeContexts(false));
+        assertEquals("Failed to delete 2 resource(s)", e.getMessage());
+        Set<String> causes = Arrays.stream(e.getSuppressed())
+            .map(suppressed -> suppressed.getCause().getMessage())
+            .collect(Collectors.toSet());
+        assertEquals(Set.of("qa unreachable", "dev unreachable"), causes);
+        assertEquals(List.of("primary"), cleaned);
+    }
+
+    @Test
+    void testDeleteResourcesStaysScopedToOwnKubeContext() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> cleaned.add("primary")));
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> cleaned.add("qa")));
+        KubeResourceManager.getForContext("qa").deleteResources(true);
+        assertEquals(List.of("qa"), cleaned);
+        KubeResourceManager.get().deleteResources(true);
+        assertEquals(List.of("qa", "primary"), cleaned);
+    }
+
+    @Test
+    void testClearCurrentBatchesInAllKubeContextsFlushesEveryKubeContext() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager qa = KubeResourceManager.getForContext("qa");
+        KubeResourceManager.get().startBatch();
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> cleaned.add("primary")));
+        qa.startBatch();
+        qa.pushToStack(new ResourceItem<>(() -> cleaned.add("qa")));
+        KubeResourceManager.get().clearCurrentBatchesInAllKubeContexts();
+        assertDoesNotThrow(qa::startBatch, "the qa batch is still open");
+        qa.endBatch();
+        KubeResourceManager.get().deleteResourcesInAllKubeContexts(true);
+        // both batches are flushed at the same moment, so their relative order is not specified
+        assertEquals(2, cleaned.size());
+        assertEquals(Set.of("qa", "primary"), Set.copyOf(cleaned));
+    }
+
+    @Test
+    void testDeleteResourcesInAllKubeContextsWithNothingTracked() {
+        assertDoesNotThrow(() -> KubeResourceManager.getForContext("qa").deleteResourcesInAllKubeContexts(true));
+    }
+
+    @Test
+    void testDeleteResourcesInAllKubeContextsDrainsKubeContextTrackedDuringCleanup() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> {
+            cleaned.add("primary");
+            // e.g. a delete callback that tracks something in a kube context the test had not used yet
+            KubeResourceManager.getForContext("late").pushToStack(new ResourceItem<>(() -> cleaned.add("late")));
+        }));
+        KubeResourceManager.get().deleteResourcesInAllKubeContexts(true);
+        assertEquals(List.of("primary", "late"), cleaned);
+    }
+
+    @Test
+    @ResourceLock(Resources.LOCALE)
+    void testGetForContextIgnoresDefaultLocale() {
+        Locale previous = Locale.getDefault();
+        // Turkish lower-cases 'I' to a dotless 'ı'
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            assertSame(KubeResourceManager.getForContext("INFRA"), KubeResourceManager.getForContext("infra"));
+        } finally {
+            Locale.setDefault(previous);
         }
     }
 

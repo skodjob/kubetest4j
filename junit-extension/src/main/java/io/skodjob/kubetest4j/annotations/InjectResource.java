@@ -70,10 +70,12 @@ public @interface InjectResource {
     boolean waitForReady() default true;
 
     /**
-     * The kubeContext in which to create this resource.
-     * If not specified, uses the default kubeContext.
+     * The kube context in which to create this resource, named after the suffix of its env vars
+     * ({@code staging} for {@code KUBECONFIG_STAGING}). Case-insensitive. Empty or {@code primary} means
+     * the default kube context. The manager of the kube context is created on demand, so no namespace
+     * annotation is needed. Injection fails at once if no env vars are defined for the kube context.
      *
-     * @return cluster kubeContext name
+     * @return kube context id
      */
     String kubeContext() default "";
 }

@@ -59,7 +59,7 @@ Singleton managing resource lifecycle and LIFO-stack cleanup:
 - `KubeResourceManager.get()` / `getForContext("name")` — default or per-context instance
 - `createResourceWithWait(T)` / `createResourceWithoutWait(T)` / `createResourceAsyncWait(T)`
 - `replaceResourceWithRetries(T, Consumer<T>)` — auto-retries on 409 conflicts
-- `deleteResources()` / `deleteResourceWithWait(T)` — cleanup methods
+- `deleteResources()` (what this manager tracked) / `deleteResourcesInAllKubeContexts(boolean)` (every kube context the current test used; both extensions call it) / `deleteResourceWithWait(T)` — cleanup methods. `clearCurrentBatchesInAllKubeContexts()` flushes explicit batches left open on this thread in any kube context; both extensions call it before cleanup
 - Tracks resources per `contextId + testDisplayName` in `STORED_RESOURCES`
 - Uses `Semaphore` (default 50) for async operation throttling
 - Uses virtual threads (`Executors.newVirtualThreadPerTaskExecutor()`)

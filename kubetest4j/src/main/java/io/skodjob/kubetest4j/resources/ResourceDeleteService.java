@@ -7,14 +7,18 @@ package io.skodjob.kubetest4j.resources;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.skodjob.kubetest4j.KubeTestConstants;
 import io.skodjob.kubetest4j.interfaces.ResourceType;
+import io.skodjob.kubetest4j.resources.ResourceTrackerService.TrackedBatch;
 import io.skodjob.kubetest4j.utils.LoggerUtils;
 import io.skodjob.kubetest4j.wait.WaitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -78,19 +82,14 @@ final class ResourceDeleteService {
             }
         }
         collectAsyncErrors(waiters, errors);
-        if (!errors.isEmpty()) {
-            RuntimeException composite = new RuntimeException(
-                "Failed to delete " + errors.size() + " resource(s)");
-            errors.forEach(composite::addSuppressed);
-            throw composite;
-        }
+        throwIfFailed(errors);
     }
 
     // ───────────────────────  BULK CLEANUP  ────────────────────
 
     void deleteResources(boolean async) {
         ResourceTrackerService tracker = manager.tracker();
-        Deque<ResourceBatch> batches = tracker.getBatches();
+        Deque<TrackedBatch> batches = tracker.getBatches();
         if (batches == null || batches.isEmpty()) {
             LOGGER.info("No resources to delete for [{}]/{}",
                 manager.contextId(),
@@ -105,7 +104,7 @@ final class ResourceDeleteService {
         try {
             int batchIndex = batches.size();
             while (!batches.isEmpty()) {
-                ResourceBatch batch = batches.pollLast();
+                ResourceBatch batch = batches.pollLast().batch();
                 batchIndex--;
                 LOGGER.info("Deleting batch #{} ({} items)",
                     batchIndex, batch.size());
@@ -113,9 +112,74 @@ final class ResourceDeleteService {
                 LOGGER.info("Batch #{} deletion completed", batchIndex);
             }
         } finally {
-            tracker.cleanupAfterDelete();
+            tracker.cleanupAfterDelete(batches);
             LoggerUtils.logSeparator();
         }
+        throwIfFailed(errors);
+    }
+
+    /**
+     * Deletes what the current test tracks in every kube context, newest batch first across all of
+     * them, as if the kube contexts shared one LIFO stack. Items inside a batch are deleted as in
+     * {@link #deleteResources(boolean)}. A failure does not stop the cleanup of the remaining batches.
+     *
+     * @param async if true, items within a batch are deleted concurrently
+     */
+    void deleteResourcesInAllKubeContexts(boolean async) {
+        String testName = manager.getTestContext().getDisplayName();
+        Map<String, Deque<TrackedBatch>> stacks = ResourceTrackerService.stacksOf(testName);
+        List<String> contextIds = stacks.entrySet().stream()
+            .filter(stack -> !stack.getValue().isEmpty())
+            .map(Map.Entry::getKey)
+            .sorted()
+            .toList();
+        if (contextIds.isEmpty()) {
+            LOGGER.info("No resources to delete for {} in any kube context", testName);
+            ResourceTrackerService.forget(testName, stacks);
+            return;
+        }
+        LoggerUtils.logSeparator();
+        LOGGER.info("Deleting all resources for {} in kube contexts {}", testName, contextIds);
+        List<Exception> errors = new ArrayList<>();
+        try {
+            // Re-read the stacks on every pass: a delete may track something in a kube context the
+            // test had not used before.
+            Optional<StackTop> next;
+            while ((next = newestTop(ResourceTrackerService.stacksOf(testName))).isPresent()) {
+                StackTop top = next.get();
+                if (!top.stack().removeLastOccurrence(top.tracked())) {
+                    // another drain of the same display name took this batch
+                    continue;
+                }
+                ResourceBatch batch = top.tracked().batch();
+                long order = top.tracked().order();
+                LOGGER.info("Deleting batch #{} ({} items) in kube context [{}]",
+                    order, batch.size(), top.contextId());
+                deleteBatch(batch, async, errors);
+                LOGGER.info("Batch #{} deletion completed", order);
+            }
+        } finally {
+            ResourceTrackerService.forget(testName, ResourceTrackerService.stacksOf(testName));
+            LoggerUtils.logSeparator();
+        }
+        throwIfFailed(errors);
+    }
+
+    /**
+     * The newest batch on the stack of one kube context.
+     */
+    private record StackTop(String contextId, Deque<TrackedBatch> stack, TrackedBatch tracked) {
+    }
+
+    private static Optional<StackTop> newestTop(Map<String, Deque<TrackedBatch>> stacks) {
+        return stacks.entrySet().stream()
+            .flatMap(stack -> Optional.ofNullable(stack.getValue().peekLast())
+                .map(tracked -> new StackTop(stack.getKey(), stack.getValue(), tracked))
+                .stream())
+            .max(Comparator.comparingLong(top -> top.tracked().order()));
+    }
+
+    private static void throwIfFailed(List<Exception> errors) {
         if (!errors.isEmpty()) {
             RuntimeException composite = new RuntimeException(
                 "Failed to delete " + errors.size() + " resource(s)");

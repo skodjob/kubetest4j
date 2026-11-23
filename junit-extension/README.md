@@ -441,9 +441,10 @@ Control when resources are cleaned up:
 
 - **`AUTOMATIC`** - Automatically clean up resources using KubeResourceManager (default)
   - Resources are cleaned up both after each test method and after all tests complete
+  - Covers every kube context the test used (`getForContext("x")`, `kubeContext = "x"`), newest resource first across all of them
   - Uses async deletion for better performance
-  - Covers failure scenarios as well
-- **`MANUAL`** - No automatic cleanup, manual resource management required
+  - Covers failure scenarios as well. A failed delete in any kube context fails the test with `Failed to delete N resource(s)`
+- **`MANUAL`** - No automatic cleanup, manual resource management required. Call `KubeResourceManager.get().deleteResourcesInAllKubeContexts(true)` yourself (e.g. in `@AfterEach`) to clean every kube context the test used. See [Manual cleanup](../docs/RESOURCE-BATCH.md#manual-cleanup)
 
 ```java
 @KubernetesTest(
