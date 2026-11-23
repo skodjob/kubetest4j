@@ -35,6 +35,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -43,6 +45,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -51,6 +54,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -764,31 +768,23 @@ class KubeResourceManagerTest {
     }
 
     @Test
-    void testDeleteResourcesInAllKubeContextsForgetsEmptyEntries() {
-        KubeResourceManager qa = KubeResourceManager.getForContext("qa");
-        qa.pushToStack(configMap("leftover"));
-        // leaves an empty deque behind, as ClassNamespaceService does
-        qa.removeFromStack(configMap("leftover"));
-        KubeResourceManager.get().deleteResourcesInAllKubeContexts(true);
-
-        TestLoggerAppender appender = new TestLoggerAppender("ForgetEmptyEntriesAppender");
-        LoggerConfig rootLogger = ((LoggerContext) LogManager.getContext(false)).getConfiguration()
-            .getLoggerConfig(LogManager.ROOT_LOGGER_NAME);
-        rootLogger.addAppender(appender, null, null);
-        appender.start();
-        try {
-            KubeResourceManager.get().printAllResources(org.slf4j.event.Level.INFO);
-            List<String> messages = appender.getLogEvents().stream()
-                .map(event -> event.getMessage().getFormattedMessage())
-                .toList();
-            assertTrue(messages.contains("Printing all managed resources across all contexts"),
-                "the appender did not capture printAllResources");
-            assertTrue(messages.stream().noneMatch(message -> message.startsWith("Context [qa]")),
-                () -> "qa is still printed: " + messages);
-        } finally {
-            rootLogger.removeAppender(appender.getName());
-            appender.stop();
-        }
+    void testDeleteResourcesInAllKubeContextsReportsEveryFailureInSyncMode() {
+        List<String> cleaned = new CopyOnWriteArrayList<>();
+        KubeResourceManager.getForContext("qa").pushToStack(new ResourceItem<>(() -> {
+            throw new IllegalStateException("qa unreachable");
+        }));
+        KubeResourceManager.get().pushToStack(new ResourceItem<>(() -> cleaned.add("primary")));
+        KubeResourceManager.getForContext("dev").pushToStack(new ResourceItem<>(() -> {
+            throw new IllegalStateException("dev unreachable");
+        }));
+        KubeResourceManager krm = KubeResourceManager.get();
+        RuntimeException e = assertThrows(RuntimeException.class, () -> krm.deleteResourcesInAllKubeContexts(false));
+        assertEquals("Failed to delete 2 resource(s)", e.getMessage());
+        Set<String> causes = Arrays.stream(e.getSuppressed())
+            .map(suppressed -> suppressed.getCause().getMessage())
+            .collect(Collectors.toSet());
+        assertEquals(Set.of("qa unreachable", "dev unreachable"), causes);
+        assertEquals(List.of("primary"), cleaned);
     }
 
     @Test
@@ -837,6 +833,7 @@ class KubeResourceManagerTest {
     }
 
     @Test
+    @ResourceLock(Resources.LOCALE)
     void testGetForContextIgnoresDefaultLocale() {
         Locale previous = Locale.getDefault();
         // Turkish lower-cases 'I' to a dotless 'ı'

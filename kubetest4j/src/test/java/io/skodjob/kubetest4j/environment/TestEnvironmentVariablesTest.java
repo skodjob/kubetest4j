@@ -6,6 +6,8 @@ package io.skodjob.kubetest4j.environment;
 
 import io.skodjob.kubetest4j.annotations.TestVisualSeparator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -88,6 +90,7 @@ class TestEnvironmentVariablesTest {
     }
 
     @Test
+    @ResourceLock(Resources.LOCALE)
     void testDiscoverClusterConfigsIgnoresDefaultLocale() {
         Locale previous = Locale.getDefault();
         // Turkish lower-cases 'I' to a dotless 'ı'

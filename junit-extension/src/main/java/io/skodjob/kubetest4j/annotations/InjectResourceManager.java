@@ -35,10 +35,12 @@ import java.lang.annotation.Target;
 public @interface InjectResourceManager {
 
     /**
-     * The kubeContext to use for this resource manager.
-     * If not specified, uses the kubeContext from the test class annotation.
+     * The kube context of this resource manager, named after the suffix of its env vars ({@code staging}
+     * for {@code KUBECONFIG_STAGING}). Case-insensitive. Empty or {@code primary} means the default kube
+     * context. The manager is created on demand, so no namespace annotation is needed. Injection fails at
+     * once if no env vars are defined for the kube context.
      *
-     * @return cluster kubeContext name
+     * @return kube context id
      */
     String kubeContext() default "";
 }

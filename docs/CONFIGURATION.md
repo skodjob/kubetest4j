@@ -73,7 +73,9 @@ export KUBECONFIG_PRODUCTION=/path/to/prod.kubeconfig
 export KUBECONFIG_DEVELOPMENT=/path/to/dev.kubeconfig
 ```
 
-Context IDs are derived from the suffix in **lowercase**: `KUBE_URL_STAGING` → context `"staging"`, `KUBECONFIG_PRODUCTION` → context `"production"`.
+Context IDs are derived from the suffix in **lowercase**: `KUBE_URL_STAGING` → context `"staging"`, `KUBECONFIG_PRODUCTION` → context `"production"`. The `kubeContext` attribute is case-insensitive, and `"primary"` (or empty) means the default context. A `kubeContext` with no matching env vars fails as soon as it is injected.
+
+Resources created in any context are cleaned up after each test and after the class by `@KubernetesTest` (with `AUTOMATIC` cleanup) and `@ResourceManager`. With manual cleanup, call `KubeResourceManager.get().deleteResourcesInAllKubeContexts(true)`.
 
 Use them in tests:
 

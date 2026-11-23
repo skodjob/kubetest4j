@@ -112,7 +112,7 @@ final class ResourceDeleteService {
                 LOGGER.info("Batch #{} deletion completed", batchIndex);
             }
         } finally {
-            tracker.cleanupAfterDelete();
+            tracker.cleanupAfterDelete(batches);
             LoggerUtils.logSeparator();
         }
         throwIfFailed(errors);
@@ -152,8 +152,11 @@ final class ResourceDeleteService {
                     continue;
                 }
                 ResourceBatch batch = top.tracked().batch();
-                LOGGER.info("Deleting batch ({} items) in kube context [{}]", batch.size(), top.contextId());
+                long order = top.tracked().order();
+                LOGGER.info("Deleting batch #{} ({} items) in kube context [{}]",
+                    order, batch.size(), top.contextId());
                 deleteBatch(batch, async, errors);
+                LOGGER.info("Batch #{} deletion completed", order);
             }
         } finally {
             ResourceTrackerService.forget(testName, ResourceTrackerService.stacksOf(testName));

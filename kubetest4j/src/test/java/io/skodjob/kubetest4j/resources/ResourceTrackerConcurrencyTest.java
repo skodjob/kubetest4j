@@ -13,6 +13,7 @@ import org.apache.logging.log4j.core.config.Configurator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 import java.util.List;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @ResourceManager
 @TestVisualSeparator
+@Timeout(60)
 class ResourceTrackerConcurrencyTest {
 
     private static final String QA = "qa";
@@ -86,6 +88,9 @@ class ResourceTrackerConcurrencyTest {
             Future<Object> drainer = pool.submit(inTest(test, () -> {
                 while (!pusher.isDone()) {
                     KubeResourceManager.get().deleteResourcesInAllKubeContexts(false);
+                    // An empty drain never blocks, and virtual threads are not time-sliced: without a
+                    // yield, a single carrier thread could run this loop forever and starve the pusher.
+                    Thread.yield();
                 }
             }));
             pusher.get();

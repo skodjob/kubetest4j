@@ -323,11 +323,13 @@ final class ResourceTrackerService {
                 (test, tracked) -> tracked == stack && tracked.isEmpty() ? null : tracked)));
     }
 
-    void cleanupAfterDelete() {
-        String testName = testContextSupplier.get().getDisplayName();
-        Map<String, Deque<TrackedBatch>> byTest = STORED_RESOURCES.get(manager.contextId());
-        if (byTest != null) {
-            byTest.remove(testName);
-        }
+    /**
+     * Stops tracking the drained stack of the current test in this manager's kube context, unless a
+     * batch was pushed to it after the drain finished.
+     *
+     * @param drained the stack returned by {@link #getBatches()} and drained by the caller
+     */
+    void cleanupAfterDelete(Deque<TrackedBatch> drained) {
+        forget(testContextSupplier.get().getDisplayName(), Map.of(manager.contextId(), drained));
     }
 }
